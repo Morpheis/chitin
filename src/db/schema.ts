@@ -28,6 +28,23 @@ CREATE TABLE IF NOT EXISTS insight_embeddings (
 );
 `;
 
+const CREATE_HISTORY = `
+CREATE TABLE IF NOT EXISTS insight_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  insight_id TEXT NOT NULL REFERENCES insights(id) ON DELETE CASCADE,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  change_type TEXT NOT NULL CHECK(change_type IN ('create','update','reinforce','merge')),
+  changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  source TEXT
+);
+`;
+
+const CREATE_HISTORY_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_history_insight_id ON insight_history(insight_id);
+`;
+
 export function initDatabase(dbPath: string): void {
   if (db) {
     db.close();
@@ -43,6 +60,8 @@ export function initDatabase(dbPath: string): void {
   // Create tables
   db.exec(CREATE_INSIGHTS);
   db.exec(CREATE_EMBEDDINGS);
+  db.exec(CREATE_HISTORY);
+  db.exec(CREATE_HISTORY_INDEX);
 }
 
 export function getDatabase(): DatabaseType {

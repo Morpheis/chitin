@@ -5,6 +5,7 @@ import { initDatabase, closeDatabase } from './db/schema.js';
 import { InsightRepository } from './db/repository.js';
 import { EmbeddingStore } from './db/embeddings.js';
 import { RetrievalEngine } from './engine/retrieve.js';
+import { InsightHistory } from './db/history.js';
 import { marshal, estimateTokens } from './engine/marshal.js';
 import { detectContext } from './engine/context-detect.js';
 import type { InsightType, INSIGHT_TYPES } from './types.js';
@@ -276,6 +277,120 @@ program
         console.log('  By type:');
         for (const [type, count] of Object.entries(stats.byType)) {
           if (count > 0) console.log(`    ${type}: ${count}`);
+        }
+      }
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === history ===
+program
+  .command('history <id>')
+  .description('View the evolution history of an insight')
+  .option('--limit <number>', 'Maximum entries to show')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action((id, opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+
+    try {
+      const insight = repo.get(id);
+      if (!insight) {
+        console.error(`Insight not found: ${id}`);
+        process.exit(1);
+      }
+
+      const history = new InsightHistory();
+      const entries = history.getHistory(id, {
+        limit: opts.limit ? parseInt(opts.limit) : undefined,
+      });
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify({ insight, history: entries }, null, 2));
+        return;
+      }
+
+      console.log(`[${insight.type}] "${insight.claim}"`);
+      console.log(`  Current: confidence ${insight.confidence} | ${insight.reinforcementCount}× reinforced\n`);
+
+      if (entries.length === 0) {
+        console.log('  No history recorded.');
+        return;
+      }
+
+      for (const entry of entries) {
+        const time = entry.changedAt;
+        const source = entry.source ? ` (${entry.source})` : '';
+
+        switch (entry.changeType) {
+          case 'create':
+            console.log(`  ${time}  [create] "${entry.newValue}"`);
+            break;
+          case 'reinforce':
+            console.log(`  ${time}  [reinforce] ${entry.field}: ${entry.oldValue} → ${entry.newValue}${source}`);
+            break;
+          case 'update':
+            console.log(`  ${time}  [update] ${entry.field}: "${entry.oldValue}" → "${entry.newValue}"`);
+            break;
+          case 'merge':
+            console.log(`  ${time}  [merge] ${entry.field}: "${entry.oldValue}" → "${entry.newValue}"${source}`);
+            break;
+        }
+      }
+      console.log(`\n  ${entries.length} event(s)`);
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === changelog ===
+program
+  .command('changelog')
+  .description('View recent changes across all insights')
+  .option('--days <number>', 'Limit to last N days')
+  .option('--limit <number>', 'Maximum entries', '20')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action((opts) => {
+    const dbPath = program.opts().db;
+    getDb(dbPath); // init db
+
+    try {
+      const history = new InsightHistory();
+      const entries = history.getChangelog({
+        days: opts.days ? parseInt(opts.days) : undefined,
+        limit: parseInt(opts.limit),
+      });
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify(entries, null, 2));
+        return;
+      }
+
+      if (entries.length === 0) {
+        console.log('No recent changes.');
+        return;
+      }
+
+      console.log(`Recent changes (${entries.length}):\n`);
+      for (const entry of entries) {
+        const time = entry.changedAt;
+        const source = entry.source ? ` (${entry.source})` : '';
+        const idShort = entry.insightId.slice(0, 8);
+
+        switch (entry.changeType) {
+          case 'create':
+            console.log(`  ${time}  [create] ${idShort}… "${entry.newValue}"`);
+            break;
+          case 'reinforce':
+            console.log(`  ${time}  [reinforce] ${idShort}… ${entry.oldValue} → ${entry.newValue}${source}`);
+            break;
+          case 'update':
+            console.log(`  ${time}  [update] ${idShort}… ${entry.field}: "${entry.oldValue}" → "${entry.newValue}"`);
+            break;
+          case 'merge':
+            console.log(`  ${time}  [merge] ${idShort}… ${entry.field}${source}`);
+            break;
         }
       }
     } finally {
