@@ -4,7 +4,7 @@ Current version: **0.1.0** — Core engine complete, OpenClaw hook live, 106 tes
 
 ---
 
-## Phase 2.5: Structural Integrity (Next)
+## Phase 2.5: Structural Integrity ✅ Complete
 
 These features protect the quality of the insight store as it grows. Without them, Chitin accumulates noise over time — contradictory insights, stale claims, invisible evolution. This phase is about making the system self-aware.
 
@@ -72,7 +72,7 @@ With `--force` flag: skip conflict check (for automation).
 
 **Files:** `src/engine/conflicts.ts`, `tests/engine/conflicts.test.ts`
 
-**Estimate:** ~4 hours. Medium complexity — the tension detection needs careful word-pair curation to be useful without being noisy.
+**Status:** ✅ Complete (PR #2). 50+ tension pairs, stemming, smart guards, CLI integration.
 
 ---
 
@@ -120,7 +120,7 @@ chitin changelog [--days 7]
 
 **Files:** `src/db/history.ts`, `tests/db/history.test.ts`, schema migration in `schema.ts`
 
-**Estimate:** ~3 hours. Straightforward schema + recording logic. The `history` and `changelog` CLI commands are presentation work.
+**Status:** ✅ Complete (PR #3). Auto-recording wired into all repository operations.
 
 ---
 
@@ -169,7 +169,7 @@ Non-interactive: `chitin review --format json` for heartbeat automation.
 
 ---
 
-## Phase 2.7: Performance & Integration Polish
+## Phase 2.7: Performance & Integration Polish (Partially Complete)
 
 ### P3 — Compiled Handler (Quick Win)
 
@@ -181,7 +181,7 @@ Non-interactive: `chitin review --format json` for heartbeat automation.
 3. Add a post-build step or npm `prepare` script
 4. Update handler.js to use compiled path with tsx fallback
 
-**Estimate:** ~30 minutes. Trivial change with meaningful latency improvement.
+**Status:** ✅ Complete (PR #4). 0.15s vs 0.67s — 4.5× faster.
 
 ---
 
@@ -257,7 +257,7 @@ Lower priority — current local-first CLI serves the single-agent use case well
 
 ---
 
-*Priority order: P0 > P1 > P3 > P2 > P4 > Phase 3*
-*P0 protects integrity. P1 enables growth tracking. P3 is a quick win. P2 and P4 are polish.*
+*Remaining: P2 (stale review) > P4 (richer reflection) > Phase 3 (API)*
+*P0 ✅, P1 ✅, P3 ✅ — structural integrity, evolution tracking, and performance all shipped.*
 
 *Last updated: 2026-02-03 by ClawdActual*
