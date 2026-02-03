@@ -21,7 +21,7 @@ function contribute(dbPath: string, type: string, claim: string, confidence: str
   const args = ['contribute', '--type', type, '--claim', claim, '--confidence', confidence, '--format', 'json', '--db', dbPath];
   if (tags) args.push('--tags', tags);
   const output = run(args);
-  return JSON.parse(output).id;
+  return JSON.parse(output).insight.id;
 }
 
 describe('similar command (CLI)', () => {

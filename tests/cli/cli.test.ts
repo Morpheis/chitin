@@ -41,13 +41,14 @@ describe('CLI', () => {
       'contribute --type behavioral --claim "Test claim from CLI" --confidence 0.8 --format json',
       dbPath
     );
-    const insight = JSON.parse(result);
+    const parsed = JSON.parse(result);
+    const insight = parsed.insight;
     expect(insight.id).toBeTruthy();
     expect(insight.claim).toBe('Test claim from CLI');
 
     const fetched = run(`get ${insight.id} --format json`, dbPath);
-    const parsed = JSON.parse(fetched);
-    expect(parsed.claim).toBe('Test claim from CLI');
+    const fetchedParsed = JSON.parse(fetched);
+    expect(fetchedParsed.claim).toBe('Test claim from CLI');
   });
 
   it('list shows contributed insights', () => {
@@ -84,7 +85,7 @@ describe('CLI', () => {
     const created = JSON.parse(run(
       'contribute --type behavioral --claim "Original" --confidence 0.5 --format json',
       dbPath
-    ));
+    )).insight;
 
     run(`update ${created.id} --claim "Updated claim" --confidence 0.9`, dbPath);
 
@@ -97,7 +98,7 @@ describe('CLI', () => {
     const created = JSON.parse(run(
       'contribute --type skill --claim "TDD works" --confidence 0.9 --format json',
       dbPath
-    ));
+    )).insight;
 
     run(`reinforce ${created.id}`, dbPath);
     run(`reinforce ${created.id}`, dbPath);
@@ -110,7 +111,7 @@ describe('CLI', () => {
     const created = JSON.parse(run(
       'contribute --type behavioral --claim "To be archived" --confidence 0.5 --format json',
       dbPath
-    ));
+    )).insight;
 
     run(`archive ${created.id}`, dbPath);
 
@@ -154,6 +155,45 @@ describe('CLI', () => {
     expect(result.length).toBeGreaterThan(0);
     // Should contain section headers and claims
     expect(result).toContain('Act fast');
+  });
+
+  it('contribute shows conflict warnings', () => {
+    run('contribute --type relational --claim "Boss values concise brief responses" --confidence 0.9', dbPath);
+
+    const result = run(
+      'contribute --type relational --claim "Boss prefers verbose detailed explanations" --confidence 0.7',
+      dbPath
+    );
+
+    expect(result).toContain('conflict');
+    expect(result).toContain('↔');
+  });
+
+  it('contribute --force skips conflict detection', () => {
+    run('contribute --type relational --claim "Boss values concise brief responses" --confidence 0.9', dbPath);
+
+    const result = run(
+      'contribute --type relational --claim "Boss prefers verbose detailed explanations" --confidence 0.7 --force',
+      dbPath
+    );
+
+    expect(result).toContain('Contributed');
+    expect(result).not.toContain('conflict');
+  });
+
+  it('contribute --format json includes conflicts array', () => {
+    run('contribute --type behavioral --claim "Always be concise and brief" --confidence 0.9', dbPath);
+
+    const result = run(
+      'contribute --type behavioral --claim "Be verbose and detailed always" --confidence 0.7 --format json',
+      dbPath
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.insight).toBeTruthy();
+    expect(Array.isArray(parsed.conflicts)).toBe(true);
+    expect(parsed.conflicts.length).toBeGreaterThan(0);
+    expect(parsed.conflicts[0].tensionScore).toBeGreaterThan(0);
   });
 
   it('stats on empty db shows zero', () => {

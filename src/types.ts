@@ -53,3 +53,14 @@ export interface RetrieveResult {
   context: string;         // marshaled compact output
   tokenEstimate: number;
 }
+
+export interface ContributeResult {
+  insight: Insight;
+  conflicts: Array<{
+    insight: Insight;
+    similarity: number;
+    tensionScore: number;
+    tensionReason: string;
+    conflictScore: number;
+  }>;
+}

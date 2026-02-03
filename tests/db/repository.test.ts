@@ -90,6 +90,64 @@ describe('InsightRepository', () => {
     });
   });
 
+  describe('contributeWithCheck', () => {
+    it('returns conflicts when contradictory insight exists', () => {
+      repo.contribute({
+        type: 'relational',
+        claim: 'Boss values concise brief responses',
+        confidence: 0.9,
+        tags: ['boss'],
+      });
+
+      const result = repo.contributeWithCheck({
+        type: 'relational',
+        claim: 'Boss prefers verbose detailed explanations',
+        confidence: 0.7,
+      });
+
+      // Insight should still be created
+      expect(result.insight).toBeTruthy();
+      expect(result.insight.id).toBeTruthy();
+      // But conflicts should be reported
+      expect(result.conflicts.length).toBeGreaterThan(0);
+      expect(result.conflicts[0].tensionScore).toBeGreaterThan(0);
+    });
+
+    it('returns empty conflicts when no contradiction', () => {
+      repo.contribute({
+        type: 'skill',
+        claim: 'TDD means writing tests first',
+        confidence: 0.9,
+      });
+
+      const result = repo.contributeWithCheck({
+        type: 'relational',
+        claim: 'Boss prefers morning standups',
+        confidence: 0.7,
+      });
+
+      expect(result.insight).toBeTruthy();
+      expect(result.conflicts).toHaveLength(0);
+    });
+
+    it('skips conflict check with force flag', () => {
+      repo.contribute({
+        type: 'behavioral',
+        claim: 'Always be verbose and detailed',
+        confidence: 0.9,
+      });
+
+      const result = repo.contributeWithCheck({
+        type: 'behavioral',
+        claim: 'Be concise and brief always',
+        confidence: 0.7,
+      }, { force: true });
+
+      expect(result.insight).toBeTruthy();
+      expect(result.conflicts).toHaveLength(0);
+    });
+  });
+
   describe('get', () => {
     it('retrieves an insight by id', () => {
       const created = repo.contribute(SAMPLE_INSIGHT);
