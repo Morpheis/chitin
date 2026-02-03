@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { getDatabase } from './schema.js';
-import type { Insight, ContributeInput, UpdateInput, InsightType, INSIGHT_TYPES } from '../types.js';
+import type { Insight, ContributeInput, ContributeResult, UpdateInput, InsightType, INSIGHT_TYPES } from '../types.js';
+import { detectConflicts, type ConflictResult } from '../engine/conflicts.js';
 
 interface InsightRow {
   id: string;
@@ -79,6 +80,19 @@ export class InsightRepository {
     );
 
     return this.get(id)!;
+  }
+
+  /**
+   * Contribute with conflict detection. Checks for contradictions before writing.
+   * Returns the new insight plus any detected conflicts.
+   * 
+   * If `force` is false and conflicts are found, the insight is STILL written
+   * (caller decides what to do with conflict info). Use this for CLI interactive mode.
+   */
+  contributeWithCheck(input: ContributeInput, options?: { force?: boolean }): ContributeResult {
+    const conflicts = options?.force ? [] : detectConflicts(this, input);
+    const insight = this.contribute(input);
+    return { insight, conflicts };
   }
 
   get(id: string): Insight | null {

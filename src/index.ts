@@ -52,6 +52,7 @@ program
   .option('--tags <tags>', 'Comma-separated tags')
   .option('--source <text>', 'What experience led to this')
   .option('--json', 'Input from JSON stdin')
+  .option('--force', 'Skip conflict detection')
   .option('--format <fmt>', 'Output format: json | human', 'human')
   .action((opts) => {
     const dbPath = program.opts().db;
@@ -71,14 +72,39 @@ program
             source: opts.source,
           };
 
-      const insight = repo.contribute(input);
+      const result = repo.contributeWithCheck(input, { force: !!opts.force });
 
       if (opts.format === 'json') {
-        console.log(JSON.stringify(insight, null, 2));
+        console.log(JSON.stringify({
+          insight: result.insight,
+          conflicts: result.conflicts.map(c => ({
+            id: c.insight.id,
+            type: c.insight.type,
+            claim: c.insight.claim,
+            similarity: c.similarity,
+            tensionScore: c.tensionScore,
+            tensionReason: c.tensionReason,
+            conflictScore: c.conflictScore,
+          })),
+        }, null, 2));
       } else {
-        console.log(`✓ Contributed ${insight.type} insight: ${insight.id}`);
-        console.log(`  "${insight.claim}"`);
-        console.log(`  confidence: ${insight.confidence} | tags: ${insight.tags.join(', ') || '(none)'}`);
+        console.log(`✓ Contributed ${result.insight.type} insight: ${result.insight.id}`);
+        console.log(`  "${result.insight.claim}"`);
+        console.log(`  confidence: ${result.insight.confidence} | tags: ${result.insight.tags.join(', ') || '(none)'}`);
+
+        if (result.conflicts.length > 0) {
+          console.log('');
+          console.log(`⚠ ${result.conflicts.length} potential conflict(s) detected:`);
+          for (const c of result.conflicts) {
+            const pct = (c.conflictScore * 100).toFixed(0);
+            console.log('');
+            console.log(`  [${c.insight.type}] "${c.insight.claim}"`);
+            console.log(`    conflict: ${pct}% | tension: ${c.tensionReason}`);
+            console.log(`    id: ${c.insight.id}`);
+          }
+          console.log('');
+          console.log('  Consider: chitin merge, chitin update, or chitin archive to resolve.');
+        }
       }
     } finally {
       closeDatabase();
