@@ -29,11 +29,7 @@ Think of it this way:
 
 ## Install
 
-```bash
-npm install chitin
-```
-
-Or clone and build:
+### For Humans
 
 ```bash
 git clone https://github.com/Morpheis/chitin.git
@@ -44,20 +40,92 @@ npm run build
 
 Requires Node.js ≥ 22.
 
-## Quick Start
-
+**Quick start:**
 ```bash
 # Initialize the database
 chitin init
 
-# Add an insight
+# Seed from existing personality spec
+chitin import seed.json
+
+# Add insights manually
 chitin contribute \
   --type behavioral \
   --claim "On clear tasks, execute first, narrate minimally" \
   --confidence 0.85 \
   --tags "boss,communication,efficiency"
 
-# Reinforce an insight (also nudges confidence toward 1.0)
+# Check current state
+chitin stats
+```
+
+### For Agents
+
+You don't install Chitin — it installs into you. Your operator sets up the hook; you just use the CLI.
+
+**What happens automatically:**
+- On session start, Chitin injects a `PERSONALITY.md` into your context with your learned behavioral patterns
+- On `/new` or `/reset`, it queues a reflection marker so your next heartbeat knows to review what you learned
+
+**What you do:**
+```bash
+# After learning something about a person
+chitin contribute --type relational \
+  --claim "Boss values directness. Skip the preamble." \
+  --confidence 0.85 --tags boss,communication
+
+# When an insight proves true again
+chitin reinforce <id>
+
+# Find potential duplicates before contributing
+chitin similar "Boss prefers efficiency"
+
+# Check for contradictions (automatic on contribute, but you can also search)
+chitin similar "Boss likes detailed explanations"
+
+# Periodic self-review during heartbeats
+chitin review          # (coming soon)
+chitin reflect --clear # process pending reflections
+```
+
+**Integration with OpenClaw/Clawdbot:**
+
+1. Create the hook directory in your workspace:
+   ```
+   ~/clawd/hooks/chitin/
+   ├── HOOK.md      # metadata + events
+   └── handler.js   # bootstrap injection + reflection queuing
+   ```
+
+2. `HOOK.md` registers for events:
+   ```yaml
+   metadata:
+     openclaw:
+       events: ["agent:bootstrap", "command:new", "command:reset"]
+   ```
+
+3. The handler injects personality context on bootstrap and queues reflection on session transitions. See the [hook source](hooks/chitin/) for the full implementation.
+
+4. Enable in your gateway config:
+   ```yaml
+   hooks:
+     internal:
+       enabled: true
+   ```
+
+**Standalone (any agent framework):**
+```bash
+# Get personality context as JSON for injection into your system prompt
+chitin retrieve --query "incoming user message context" --format json --budget 2000
+```
+
+## Quick Reference
+
+```bash
+# Add an insight (with conflict detection)
+chitin contribute --type behavioral --claim "..." --confidence 0.85
+
+# Reinforce an insight (nudges confidence toward 1.0)
 chitin reinforce <id>
 
 # Get personality context for a session
@@ -149,31 +217,21 @@ This gives diminishing returns — a 0.5 confidence insight gains more per reinf
 
 Output is marshaled to fit within a token budget (default 2000). At ~2,500 tokens, personality context uses ~1.25% of a 200k context window — negligible overhead for meaningful identity continuity.
 
-## Integration
+### Contradiction Detection
 
-### With OpenClaw / Clawdbot
+When contributing, Chitin scans existing insights for semantic tension:
 
-Chitin integrates via workspace hooks. On session start (`agent:bootstrap`, `command:new/reset`), the hook:
+```
+$ chitin contribute --type relational --claim "Boss prefers verbose explanations"
 
-1. Runs `chitin retrieve` with the session context
-2. Writes a `PERSONALITY.md` file to the workspace
-3. The agent loads it automatically as part of its context files
+⚠ 1 potential conflict(s) detected:
+  [relational] "Boss values directness and efficiency..."
+    conflict: 52% | tension: "verbose" ↔ "direct", "verbose" ↔ "efficient"
 
-### Standalone
-
-Any agent framework can shell out to the CLI:
-
-```bash
-# Get personality context as JSON
-chitin retrieve --query "incoming user message" --format json --budget 2000
+  Consider: chitin merge, chitin update, or chitin archive to resolve.
 ```
 
-Or use it programmatically:
-
-```typescript
-import { InsightRepository } from 'chitin/db/repository';
-import { RetrievalEngine } from 'chitin/engine/retrieve';
-```
+Uses keyword-based tension pairs with simple stemming. No ML — just enough to flag obvious contradictions. Use `--force` to skip.
 
 ## Storage
 
