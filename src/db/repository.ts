@@ -36,6 +36,15 @@ function rowToInsight(row: InsightRow): Insight {
   };
 }
 
+export interface SimilarResult {
+  insight: Insight;
+  similarity: number;
+}
+
+export interface MergeOptions {
+  claim?: string;  // Override the merged claim
+}
+
 export interface ListOptions {
   types?: InsightType[];
   tags?: string[];
@@ -111,6 +120,14 @@ export class InsightRepository {
     db.prepare('DELETE FROM insights WHERE id = ?').run(id);
   }
 
+  /**
+   * Confidence adjustment rate per reinforcement.
+   * Each reinforce nudges confidence up by this fraction of the remaining gap to 1.0:
+   *   newConfidence = confidence + (1.0 - confidence) * CONFIDENCE_ADJUSTMENT_RATE
+   * At 0.05, a 0.8 → 0.81 → 0.8195 → ... asymptotically approaching 1.0.
+   */
+  static readonly CONFIDENCE_ADJUSTMENT_RATE = 0.05;
+
   reinforce(id: string): Insight {
     const db = getDatabase();
     const existing = this.get(id);
@@ -118,15 +135,133 @@ export class InsightRepository {
       throw new Error(`Insight not found: ${id}`);
     }
 
+    // Nudge confidence toward 1.0
+    const newConfidence = Math.min(
+      1.0,
+      existing.confidence + (1.0 - existing.confidence) * InsightRepository.CONFIDENCE_ADJUSTMENT_RATE,
+    );
+
     db.prepare(`
       UPDATE insights 
       SET reinforcement_count = reinforcement_count + 1,
+          confidence = ?,
           last_retrieved_at = datetime('now'),
           updated_at = datetime('now')
       WHERE id = ?
-    `).run(id);
+    `).run(newConfidence, id);
 
     return this.get(id)!;
+  }
+
+  /**
+   * Find insights with similar claims using word-level Jaccard similarity.
+   * Returns results sorted by similarity descending.
+   */
+  findSimilar(claim: string, minSimilarity = 0.2, excludeId?: string): SimilarResult[] {
+    const queryWords = this.tokenize(claim);
+    if (queryWords.size === 0) return [];
+
+    const allInsights = this.list();
+    const results: SimilarResult[] = [];
+
+    for (const insight of allInsights) {
+      if (excludeId && insight.id === excludeId) continue;
+
+      const insightWords = this.tokenize(insight.claim);
+      const similarity = this.jaccardSimilarity(queryWords, insightWords);
+
+      if (similarity >= minSimilarity) {
+        results.push({ insight, similarity });
+      }
+    }
+
+    results.sort((a, b) => b.similarity - a.similarity);
+    return results;
+  }
+
+  /**
+   * Merge source insight into target. Target survives with combined data:
+   * - confidence: max of both
+   * - tags: union (deduplicated)
+   * - reinforcementCount: sum of both
+   * - reasoning: concatenated if both exist
+   * - claim: target's claim unless overridden
+   * 
+   * Source is deleted after merge.
+   */
+  merge(sourceId: string, targetId: string, options: MergeOptions = {}): Insight {
+    if (sourceId === targetId) {
+      throw new Error('Cannot merge an insight with itself');
+    }
+
+    const source = this.get(sourceId);
+    if (!source) {
+      throw new Error(`Source insight not found: ${sourceId}`);
+    }
+
+    const target = this.get(targetId);
+    if (!target) {
+      throw new Error(`Target insight not found: ${targetId}`);
+    }
+
+    // Combine fields
+    const mergedConfidence = Math.max(source.confidence, target.confidence);
+    const mergedTags = [...new Set([...target.tags, ...source.tags])];
+    const mergedReinforcement = target.reinforcementCount + source.reinforcementCount;
+
+    let mergedReasoning = target.reasoning;
+    if (source.reasoning) {
+      mergedReasoning = mergedReasoning
+        ? `${mergedReasoning}; ${source.reasoning}`
+        : source.reasoning;
+    }
+
+    const mergedClaim = options.claim ?? target.claim;
+
+    // Update target
+    const db = getDatabase();
+    db.prepare(`
+      UPDATE insights
+      SET claim = ?,
+          confidence = ?,
+          tags = ?,
+          reinforcement_count = ?,
+          reasoning = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      mergedClaim,
+      mergedConfidence,
+      JSON.stringify(mergedTags),
+      mergedReinforcement,
+      mergedReasoning ?? null,
+      targetId,
+    );
+
+    // Delete source
+    this.archive(sourceId);
+
+    return this.get(targetId)!;
+  }
+
+  private tokenize(text: string): Set<string> {
+    return new Set(
+      text.toLowerCase()
+        .split(/\W+/)
+        .filter(w => w.length > 2)  // skip tiny words like "a", "on", "is"
+    );
+  }
+
+  private jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+    if (a.size === 0 && b.size === 0) return 0;
+
+    let intersection = 0;
+    for (const word of a) {
+      if (b.has(word)) intersection++;
+    }
+
+    const union = a.size + b.size - intersection;
+    return union === 0 ? 0 : intersection / union;
   }
 
   list(options?: ListOptions): Insight[] {

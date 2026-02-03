@@ -257,6 +257,129 @@ program
     }
   });
 
+// === reflect ===
+program
+  .command('reflect')
+  .description('Review pending session reflections and current insight state')
+  .option('--pending-path <path>', 'Path to pending-reflection.json', path.join(DEFAULT_DB_DIR, 'pending-reflection.json'))
+  .option('--clear', 'Clear pending reflections after display')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action((opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+
+    try {
+      // Read pending reflections
+      let pending: Array<{ sessionKey: string; timestamp: string; reason: string }> = [];
+      try {
+        if (fs.existsSync(opts.pendingPath)) {
+          pending = JSON.parse(fs.readFileSync(opts.pendingPath, 'utf-8'));
+        }
+      } catch {
+        pending = [];
+      }
+
+      const stats = repo.stats();
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify({ pending, stats }, null, 2));
+        if (opts.clear && pending.length > 0) {
+          fs.writeFileSync(opts.pendingPath, '[]');
+        }
+        return;
+      }
+
+      // Human format
+      if (pending.length === 0) {
+        console.log('No pending reflections.');
+      } else {
+        console.log(`${pending.length} pending reflection(s):\n`);
+        for (const entry of pending) {
+          const time = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'unknown';
+          console.log(`  • ${entry.sessionKey} (${entry.reason}) — ${time}`);
+        }
+      }
+
+      console.log(`\nCurrent state: ${stats.total} insight(s), avg confidence ${stats.averageConfidence.toFixed(2)}`);
+
+      if (opts.clear && pending.length > 0) {
+        fs.writeFileSync(opts.pendingPath, '[]');
+        console.log('\n✓ Cleared pending reflections.');
+      }
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === similar ===
+program
+  .command('similar <claim>')
+  .description('Find insights similar to a given claim')
+  .option('--threshold <number>', 'Minimum similarity (0-1)', '0.2')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action((claim, opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+
+    try {
+      const threshold = parseFloat(opts.threshold);
+      const results = repo.findSimilar(claim, threshold);
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify(results.map(r => ({
+          id: r.insight.id,
+          type: r.insight.type,
+          claim: r.insight.claim,
+          similarity: r.similarity,
+        })), null, 2));
+        return;
+      }
+
+      if (results.length === 0) {
+        console.log('No similar insights found.');
+        return;
+      }
+
+      console.log(`Found ${results.length} similar insight(s):\n`);
+      for (const r of results) {
+        const pct = (r.similarity * 100).toFixed(0);
+        console.log(`  [${pct}%] [${r.insight.type}] ${r.insight.claim}`);
+        console.log(`    id: ${r.insight.id}`);
+      }
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === merge ===
+program
+  .command('merge <sourceId> <targetId>')
+  .description('Merge source insight into target (source is deleted)')
+  .option('--claim <text>', 'Override the merged claim')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action((sourceId, targetId, opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+
+    try {
+      const mergeOpts: { claim?: string } = {};
+      if (opts.claim) mergeOpts.claim = opts.claim;
+
+      const merged = repo.merge(sourceId, targetId, mergeOpts);
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify(merged, null, 2));
+      } else {
+        console.log(`✓ Merged into: ${merged.id}`);
+        console.log(`  "${merged.claim}"`);
+        console.log(`  confidence: ${merged.confidence} | reinforced: ${merged.reinforcementCount}×`);
+        console.log(`  tags: ${merged.tags.join(', ') || '(none)'}`);
+      }
+    } finally {
+      closeDatabase();
+    }
+  });
+
 // === retrieve ===
 program
   .command('retrieve')
