@@ -174,6 +174,42 @@ describe('InsightRepository', () => {
     it('throws on non-existent id', () => {
       expect(() => repo.reinforce('non-existent')).toThrow();
     });
+
+    it('nudges confidence upward on reinforce', () => {
+      const created = repo.contribute({ ...SAMPLE_INSIGHT, confidence: 0.8 });
+      const reinforced = repo.reinforce(created.id);
+
+      // Confidence should increase: 0.8 + (1.0 - 0.8) * 0.05 = 0.81
+      expect(reinforced.confidence).toBeGreaterThan(0.8);
+      expect(reinforced.confidence).toBeCloseTo(0.81, 4);
+    });
+
+    it('confidence converges toward 1.0 with repeated reinforcement', () => {
+      const created = repo.contribute({ ...SAMPLE_INSIGHT, confidence: 0.5 });
+
+      let current = created;
+      for (let i = 0; i < 20; i++) {
+        current = repo.reinforce(current.id);
+      }
+
+      // After 20 reinforcements from 0.5, should be well above 0.8 but below 1.0
+      expect(current.confidence).toBeGreaterThan(0.8);
+      expect(current.confidence).toBeLessThan(1.0);
+    });
+
+    it('does not exceed 1.0 confidence', () => {
+      const created = repo.contribute({ ...SAMPLE_INSIGHT, confidence: 0.99 });
+      const reinforced = repo.reinforce(created.id);
+
+      expect(reinforced.confidence).toBeLessThanOrEqual(1.0);
+    });
+
+    it('does not change confidence of 1.0', () => {
+      const created = repo.contribute({ ...SAMPLE_INSIGHT, confidence: 1.0 });
+      const reinforced = repo.reinforce(created.id);
+
+      expect(reinforced.confidence).toBe(1.0);
+    });
   });
 
   describe('list', () => {
@@ -225,6 +261,123 @@ describe('InsightRepository', () => {
       repo.contribute(SAMPLE_INSIGHT);
       const result = repo.list({ types: ['skill'] });
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('findSimilar', () => {
+    it('finds insights with overlapping words in claims', () => {
+      repo.contribute({ type: 'behavioral', claim: 'On clear tasks, execute first and narrate minimally', confidence: 0.8 });
+      repo.contribute({ type: 'behavioral', claim: 'Execute tasks quickly, narrate only when needed', confidence: 0.7 });
+      repo.contribute({ type: 'skill', claim: 'TDD means writing tests first', confidence: 0.9 });
+
+      const similar = repo.findSimilar('On clear tasks, execute first, narrate minimally');
+      expect(similar).toHaveLength(2); // both behavioral ones match
+      expect(similar[0].similarity).toBeGreaterThan(similar[1].similarity);
+    });
+
+    it('returns empty array when no matches above threshold', () => {
+      repo.contribute({ type: 'skill', claim: 'TDD means writing tests first', confidence: 0.9 });
+
+      const similar = repo.findSimilar('Boss prefers direct communication', 0.5);
+      expect(similar).toHaveLength(0);
+    });
+
+    it('excludes a specific insight by id', () => {
+      const a = repo.contribute({ type: 'behavioral', claim: 'Execute tasks quickly', confidence: 0.8 });
+      repo.contribute({ type: 'behavioral', claim: 'Execute tasks and move fast', confidence: 0.7 });
+
+      const similar = repo.findSimilar('Execute tasks quickly', 0.1, a.id);
+      // Should not include 'a' itself
+      expect(similar.every(s => s.insight.id !== a.id)).toBe(true);
+      expect(similar.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('merge', () => {
+    it('combines two insights, keeping target as the survivor', () => {
+      const target = repo.contribute({
+        type: 'behavioral',
+        claim: 'Execute first on clear tasks',
+        confidence: 0.8,
+        tags: ['boss', 'efficiency'],
+      });
+      const source = repo.contribute({
+        type: 'behavioral',
+        claim: 'Act quickly, narrate minimally',
+        confidence: 0.9,
+        tags: ['communication', 'efficiency'],
+        reasoning: 'Learned from multiple interactions',
+      });
+
+      const merged = repo.merge(source.id, target.id);
+
+      // Target survives with updated fields
+      expect(merged.id).toBe(target.id);
+      // Takes higher confidence
+      expect(merged.confidence).toBe(0.9);
+      // Union of tags
+      expect(merged.tags).toEqual(expect.arrayContaining(['boss', 'efficiency', 'communication']));
+      expect(merged.tags).toHaveLength(3); // no duplicates
+    });
+
+    it('sums reinforcement counts', () => {
+      const target = repo.contribute({ type: 'behavioral', claim: 'A', confidence: 0.8 });
+      const source = repo.contribute({ type: 'behavioral', claim: 'B', confidence: 0.7 });
+
+      // Reinforce both
+      repo.reinforce(target.id);
+      repo.reinforce(target.id);
+      repo.reinforce(source.id);
+
+      const merged = repo.merge(source.id, target.id);
+      expect(merged.reinforcementCount).toBe(3); // 2 + 1
+    });
+
+    it('deletes the source insight after merge', () => {
+      const target = repo.contribute({ type: 'behavioral', claim: 'A', confidence: 0.8 });
+      const source = repo.contribute({ type: 'behavioral', claim: 'B', confidence: 0.7 });
+
+      repo.merge(source.id, target.id);
+
+      expect(repo.get(source.id)).toBeNull();
+    });
+
+    it('appends source reasoning to target reasoning', () => {
+      const target = repo.contribute({
+        type: 'behavioral', claim: 'A', confidence: 0.8,
+        reasoning: 'Original reasoning',
+      });
+      const source = repo.contribute({
+        type: 'behavioral', claim: 'B', confidence: 0.7,
+        reasoning: 'Additional reasoning',
+      });
+
+      const merged = repo.merge(source.id, target.id);
+      expect(merged.reasoning).toContain('Original reasoning');
+      expect(merged.reasoning).toContain('Additional reasoning');
+    });
+
+    it('allows overriding the claim during merge', () => {
+      const target = repo.contribute({ type: 'behavioral', claim: 'Old claim', confidence: 0.8 });
+      const source = repo.contribute({ type: 'behavioral', claim: 'Other claim', confidence: 0.7 });
+
+      const merged = repo.merge(source.id, target.id, { claim: 'New combined claim' });
+      expect(merged.claim).toBe('New combined claim');
+    });
+
+    it('throws when source and target are the same', () => {
+      const a = repo.contribute({ type: 'behavioral', claim: 'A', confidence: 0.8 });
+      expect(() => repo.merge(a.id, a.id)).toThrow();
+    });
+
+    it('throws when source does not exist', () => {
+      const a = repo.contribute({ type: 'behavioral', claim: 'A', confidence: 0.8 });
+      expect(() => repo.merge('nonexistent', a.id)).toThrow();
+    });
+
+    it('throws when target does not exist', () => {
+      const a = repo.contribute({ type: 'behavioral', claim: 'A', confidence: 0.8 });
+      expect(() => repo.merge(a.id, 'nonexistent')).toThrow();
     });
   });
 
