@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { getDatabase } from './schema.js';
 import type { Insight, ContributeInput, ContributeResult, UpdateInput, InsightType, INSIGHT_TYPES } from '../types.js';
 import { detectConflicts, type ConflictResult } from '../engine/conflicts.js';
+import { InsightHistory } from './history.js';
 
 interface InsightRow {
   id: string;
@@ -59,6 +60,8 @@ export interface InsightStats {
 }
 
 export class InsightRepository {
+  private history = new InsightHistory();
+
   contribute(input: ContributeInput): Insight {
     const db = getDatabase();
     const id = crypto.randomUUID();
@@ -79,7 +82,9 @@ export class InsightRepository {
       input.source ?? null,
     );
 
-    return this.get(id)!;
+    const insight = this.get(id)!;
+    this.history.recordCreate(insight);
+    return insight;
   }
 
   /**
@@ -110,14 +115,38 @@ export class InsightRepository {
 
     const fields: string[] = [];
     const values: unknown[] = [];
+    const changes: Record<string, { old: string; new: string }> = {};
 
-    if (input.claim !== undefined) { fields.push('claim = ?'); values.push(input.claim); }
-    if (input.reasoning !== undefined) { fields.push('reasoning = ?'); values.push(input.reasoning); }
-    if (input.context !== undefined) { fields.push('context = ?'); values.push(input.context); }
-    if (input.limitations !== undefined) { fields.push('limitations = ?'); values.push(input.limitations); }
-    if (input.confidence !== undefined) { fields.push('confidence = ?'); values.push(input.confidence); }
-    if (input.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(input.tags)); }
-    if (input.source !== undefined) { fields.push('source = ?'); values.push(input.source); }
+    if (input.claim !== undefined) {
+      fields.push('claim = ?'); values.push(input.claim);
+      if (input.claim !== existing.claim) changes.claim = { old: existing.claim, new: input.claim };
+    }
+    if (input.reasoning !== undefined) {
+      fields.push('reasoning = ?'); values.push(input.reasoning);
+      if (input.reasoning !== (existing.reasoning ?? '')) changes.reasoning = { old: existing.reasoning ?? '', new: input.reasoning };
+    }
+    if (input.context !== undefined) {
+      fields.push('context = ?'); values.push(input.context);
+      if (input.context !== (existing.context ?? '')) changes.context = { old: existing.context ?? '', new: input.context };
+    }
+    if (input.limitations !== undefined) {
+      fields.push('limitations = ?'); values.push(input.limitations);
+      if (input.limitations !== (existing.limitations ?? '')) changes.limitations = { old: existing.limitations ?? '', new: input.limitations };
+    }
+    if (input.confidence !== undefined) {
+      fields.push('confidence = ?'); values.push(input.confidence);
+      if (input.confidence !== existing.confidence) changes.confidence = { old: String(existing.confidence), new: String(input.confidence) };
+    }
+    if (input.tags !== undefined) {
+      fields.push('tags = ?'); values.push(JSON.stringify(input.tags));
+      const oldTags = JSON.stringify(existing.tags);
+      const newTags = JSON.stringify(input.tags);
+      if (oldTags !== newTags) changes.tags = { old: oldTags, new: newTags };
+    }
+    if (input.source !== undefined) {
+      fields.push('source = ?'); values.push(input.source);
+      if (input.source !== (existing.source ?? '')) changes.source = { old: existing.source ?? '', new: input.source };
+    }
 
     if (fields.length === 0) return existing;
 
@@ -125,6 +154,11 @@ export class InsightRepository {
     values.push(id);
 
     db.prepare(`UPDATE insights SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+
+    // Record history
+    if (Object.keys(changes).length > 0) {
+      this.history.recordUpdate(id, changes);
+    }
 
     return this.get(id)!;
   }
@@ -150,10 +184,12 @@ export class InsightRepository {
     }
 
     // Nudge confidence toward 1.0
+    const oldConfidence = existing.confidence;
     const newConfidence = Math.min(
       1.0,
-      existing.confidence + (1.0 - existing.confidence) * InsightRepository.CONFIDENCE_ADJUSTMENT_RATE,
+      oldConfidence + (1.0 - oldConfidence) * InsightRepository.CONFIDENCE_ADJUSTMENT_RATE,
     );
+    const newCount = existing.reinforcementCount + 1;
 
     db.prepare(`
       UPDATE insights 
@@ -163,6 +199,9 @@ export class InsightRepository {
           updated_at = datetime('now')
       WHERE id = ?
     `).run(newConfidence, id);
+
+    // Record history
+    this.history.recordReinforce(id, oldConfidence, newConfidence, newCount);
 
     return this.get(id)!;
   }
@@ -251,6 +290,18 @@ export class InsightRepository {
       mergedReasoning ?? null,
       targetId,
     );
+
+    // Record history for changed fields
+    const mergeChanges: Record<string, { old: string; new: string }> = {};
+    if (mergedClaim !== target.claim) mergeChanges.claim = { old: target.claim, new: mergedClaim };
+    if (mergedConfidence !== target.confidence) mergeChanges.confidence = { old: String(target.confidence), new: String(mergedConfidence) };
+    if (JSON.stringify(mergedTags) !== JSON.stringify(target.tags)) mergeChanges.tags = { old: JSON.stringify(target.tags), new: JSON.stringify(mergedTags) };
+    if (mergedReinforcement !== target.reinforcementCount) mergeChanges.reinforcement_count = { old: String(target.reinforcementCount), new: String(mergedReinforcement) };
+    if (mergedReasoning !== target.reasoning) mergeChanges.reasoning = { old: target.reasoning ?? '', new: mergedReasoning ?? '' };
+
+    if (Object.keys(mergeChanges).length > 0) {
+      this.history.recordMerge(targetId, sourceId, mergeChanges);
+    }
 
     // Delete source
     this.archive(sourceId);
