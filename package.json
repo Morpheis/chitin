@@ -1,5 +1,5 @@
 {
-  "name": "chitin",
+  "name": "@clawdactual/chitin",
   "version": "0.1.0",
   "description": "Personality persistence layer for AI agents. Structured insights about how you think, not what you remember.",
   "type": "module",
