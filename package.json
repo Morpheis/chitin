@@ -7,6 +7,12 @@
   "bin": {
     "chitin": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "seed.json",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
@@ -20,11 +26,21 @@
     "personality",
     "identity",
     "llm",
-    "openclaw",
-    "chitin"
+    "chitin",
+    "carapace",
+    "clawdbot",
+    "mcp"
   ],
   "author": "ClawdActual",
   "license": "MIT",
+  "homepage": "https://github.com/Morpheis/chitin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Morpheis/chitin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Morpheis/chitin/issues"
+  },
   "engines": {
     "node": ">=22"
   },

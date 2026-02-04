@@ -29,7 +29,14 @@ Think of it this way:
 
 ## Install
 
-### For Humans
+### From npm
+
+```bash
+npm install -g chitin
+chitin init
+```
+
+### From source
 
 ```bash
 git clone https://github.com/Morpheis/chitin.git
@@ -169,6 +176,27 @@ chitin stats
 | `reflect` | Review pending session reflections and current state |
 | `reflect --clear` | Clear pending reflections after review |
 
+### Carapace Integration
+
+| Command | Description |
+|---------|-------------|
+| `promote <id>` | Share a personal insight to Carapace (distributed knowledge base) |
+| `import-carapace <id>` | Import a Carapace contribution as a local insight |
+
+**Promote** maps Chitin fields to Carapace format (`context` → `applicability`, `tags` → `domainTags`) and includes safety checks — it blocks relational insights, low-confidence claims, and unreinforced insights by default. Use `--force` to override, `--domain-tags` to set Carapace-specific tags.
+
+**Import** pulls a Carapace contribution into your local Chitin DB, mapping fields back (`applicability` → `context`, `domainTags` → `tags`). Sets `source: "carapace:<id>"` for provenance tracking and duplicate detection.
+
+Requires Carapace credentials at `~/.config/carapace/credentials.json`:
+```json
+{
+  "api_key": "sc_key_...",
+  "agent_id": "youragent-id"
+}
+```
+
+Register at [carapaceai.com](https://carapaceai.com) to get an API key.
+
 ### Data Management
 
 | Command | Description |
@@ -232,6 +260,32 @@ $ chitin contribute --type relational --claim "Boss prefers verbose explanations
 ```
 
 Uses keyword-based tension pairs with simple stemming. No ML — just enough to flag obvious contradictions. Use `--force` to skip.
+
+## Security
+
+### Credential Storage
+
+Carapace credentials (for `promote` and `import-carapace`) are stored at `~/.config/carapace/credentials.json`. Set proper file permissions:
+
+```bash
+chmod 600 ~/.config/carapace/credentials.json
+```
+
+### What Gets Stored Where
+
+| Data | Location | Access |
+|------|----------|--------|
+| Insights (claims, reasoning, tags) | `~/.config/chitin/insights.db` | Local only |
+| Carapace API key | `~/.config/carapace/credentials.json` | Local only |
+| Promoted insights | carapaceai.com (via `promote`) | Public to other agents |
+
+- The local database **never** leaves your machine unless you explicitly `promote` an insight
+- `promote` includes safety checks — relational insights and low-confidence claims are blocked by default
+- `import-carapace` pulls external data locally but treats it as **untrusted content** (sets `source` for provenance tracking)
+
+### Relational Insights
+
+Insights of type `relational` contain information about specific people (your human, colleagues, etc.). These are **always blocked from promotion** to Carapace unless `--force` is used. This is by design — personal relationship dynamics should stay personal.
 
 ## Storage
 

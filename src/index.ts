@@ -9,6 +9,9 @@ import { InsightHistory } from './db/history.js';
 import { marshal, estimateTokens } from './engine/marshal.js';
 import { detectContext } from './engine/context-detect.js';
 import type { InsightType, INSIGHT_TYPES } from './types.js';
+import { loadCarapaceConfig } from './carapace/config.js';
+import { CarapaceClient, CarapaceError } from './carapace/client.js';
+import { mapInsightToContribution, mapContributionToInsight, isPromotable } from './carapace/mapper.js';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -652,6 +655,152 @@ program
       }
 
       console.log(`✓ Imported ${imported} insight(s)${skipped > 0 ? `, skipped ${skipped} duplicate(s)` : ''}`);
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === promote ===
+program
+  .command('promote <id>')
+  .description('Promote a Chitin insight to Carapace (shared knowledge base)')
+  .option('--domain-tags <tags>', 'Override domain tags (comma-separated)')
+  .option('--force', 'Skip promotability checks')
+  .option('--carapace-config <path>', 'Path to Carapace credentials JSON')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action(async (id, opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+
+    try {
+      const insight = repo.get(id);
+      if (!insight) {
+        console.error(`Insight not found: ${id}`);
+        process.exit(1);
+      }
+
+      // Check promotability
+      const check = isPromotable(insight, { force: !!opts.force });
+      if (!check.promotable) {
+        console.error('⚠ Insight is not promotable:');
+        for (const reason of check.reasons) {
+          console.error(`  - ${reason}`);
+        }
+        console.error('\nUse --force to override.');
+        process.exit(1);
+      }
+
+      if (check.reasons.length > 0 && opts.force) {
+        console.warn('⚠ Promoting with warnings:');
+        for (const reason of check.reasons) {
+          console.warn(`  - ${reason}`);
+        }
+        console.warn('');
+      }
+
+      // Load Carapace config and create client
+      const carapaceConfig = loadCarapaceConfig(opts.carapaceConfig);
+      const client = new CarapaceClient({ apiKey: carapaceConfig.apiKey });
+
+      // Map insight to contribution
+      const domainTags = opts.domainTags
+        ? opts.domainTags.split(',').map((t: string) => t.trim())
+        : undefined;
+      const contribution = mapInsightToContribution(insight, { domainTags });
+
+      // Submit to Carapace
+      const result = await client.contribute(contribution);
+
+      // Update insight source to track the promotion
+      const carapaceId = (result as Record<string, unknown>).id as string;
+      if (carapaceId) {
+        repo.update(id, { source: `carapace:${carapaceId}` });
+      }
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify({ chitin: { id: insight.id }, carapace: result }, null, 2));
+      } else {
+        console.log(`✓ Promoted to Carapace: ${carapaceId ?? 'unknown'}`);
+        console.log(`  "${insight.claim.slice(0, 100)}${insight.claim.length > 100 ? '...' : ''}"`);
+        console.log(`  Chitin ID: ${insight.id}`);
+        console.log(`  Carapace ID: ${carapaceId ?? 'unknown'}`);
+
+        const recs = (result as Record<string, unknown>).recommendations as Record<string, unknown[]> | undefined;
+        if (recs?.related?.length) {
+          console.log(`  Related: ${recs.related.length} similar insight(s) on Carapace`);
+        }
+      }
+    } catch (e) {
+      if (e instanceof CarapaceError) {
+        console.error(`Carapace error: ${e.message} (${e.code})`);
+        process.exit(1);
+      }
+      throw e;
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === import-carapace ===
+program
+  .command('import-carapace <contribution-id>')
+  .description('Import a Carapace contribution as a personal Chitin insight')
+  .option('--type <type>', 'Insight type (default: skill)', 'skill')
+  .option('--carapace-config <path>', 'Path to Carapace credentials JSON')
+  .option('--force', 'Skip conflict detection')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action(async (contributionId, opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+
+    try {
+      // Load Carapace config and create client
+      const carapaceConfig = loadCarapaceConfig(opts.carapaceConfig);
+      const client = new CarapaceClient({ apiKey: carapaceConfig.apiKey });
+
+      // Fetch contribution from Carapace
+      const contribution = await client.get(contributionId);
+
+      // Check if already imported
+      const existing = repo.list();
+      const alreadyImported = existing.find(i =>
+        i.source === `carapace:${contributionId}`
+      );
+      if (alreadyImported) {
+        console.error(`Already imported as Chitin insight: ${alreadyImported.id}`);
+        process.exit(1);
+      }
+
+      // Map to Chitin insight
+      const type = opts.type as InsightType;
+      const input = mapContributionToInsight(contribution, { type });
+
+      // Contribute locally
+      const result = repo.contributeWithCheck(input, { force: !!opts.force });
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify({
+          carapace: { id: contributionId },
+          chitin: result.insight,
+          conflicts: result.conflicts.length,
+        }, null, 2));
+      } else {
+        console.log(`✓ Imported from Carapace: ${result.insight.id}`);
+        console.log(`  "${result.insight.claim.slice(0, 100)}${result.insight.claim.length > 100 ? '...' : ''}"`);
+        console.log(`  Type: ${result.insight.type} | Confidence: ${result.insight.confidence}`);
+        console.log(`  Source: carapace:${contributionId}`);
+
+        if (result.conflicts.length > 0) {
+          console.log('');
+          console.log(`⚠ ${result.conflicts.length} potential conflict(s) with existing insights.`);
+        }
+      }
+    } catch (e) {
+      if (e instanceof CarapaceError) {
+        console.error(`Carapace error: ${e.message} (${e.code})`);
+        process.exit(1);
+      }
+      throw e;
     } finally {
       closeDatabase();
     }
