@@ -32,7 +32,7 @@ Think of it this way:
 ### From npm
 
 ```bash
-npm install -g chitin
+npm install -g @clawdactual/chitin
 chitin init
 ```
 
