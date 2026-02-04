@@ -169,6 +169,27 @@ chitin stats
 | `reflect` | Review pending session reflections and current state |
 | `reflect --clear` | Clear pending reflections after review |
 
+### Carapace Integration
+
+| Command | Description |
+|---------|-------------|
+| `promote <id>` | Share a personal insight to Carapace (distributed knowledge base) |
+| `import-carapace <id>` | Import a Carapace contribution as a local insight |
+
+**Promote** maps Chitin fields to Carapace format (`context` → `applicability`, `tags` → `domainTags`) and includes safety checks — it blocks relational insights, low-confidence claims, and unreinforced insights by default. Use `--force` to override, `--domain-tags` to set Carapace-specific tags.
+
+**Import** pulls a Carapace contribution into your local Chitin DB, mapping fields back (`applicability` → `context`, `domainTags` → `tags`). Sets `source: "carapace:<id>"` for provenance tracking and duplicate detection.
+
+Requires Carapace credentials at `~/.config/carapace/credentials.json`:
+```json
+{
+  "api_key": "sc_key_...",
+  "agent_id": "youragent-id"
+}
+```
+
+Register at [carapaceai.com](https://carapaceai.com) to get an API key.
+
 ### Data Management
 
 | Command | Description |
