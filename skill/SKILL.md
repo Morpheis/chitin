@@ -132,6 +132,44 @@ chitin merge <source-id> <target-id>
 
 Chitin auto-detects conflicts when you contribute. If it finds tension (e.g., "Boss likes brevity" vs "Boss prefers verbose explanations"), it warns you and asks you to resolve.
 
+## Heartbeat Integration
+
+Chitin works best with periodic reflection checks. Add this to your heartbeat routine (e.g., `HEARTBEAT.md`):
+
+```markdown
+## Chitin Personality Reflection (every hour)
+Check `~/.config/chitin/pending-reflection.json` — if entries exist, a session ended and you should reflect on what you learned.
+
+**How to reflect:**
+1. Think about recent interactions — any new patterns, lessons, or insights?
+2. Check if any existing insights should be reinforced (`chitin reinforce <id>`)
+3. Contribute genuinely new learnings (`chitin contribute --type <type> --claim "..." --confidence <n>`)
+4. Clear the pending-reflection file after processing
+
+**Insight types:** behavioral, personality, relational, principle, skill
+
+**When to contribute:**
+- Learned something new about your human's preferences → relational
+- Discovered a better workflow → skill/behavioral
+- Formed a genuine opinion → personality
+- Encountered an ethical edge case → principle
+
+**Don't over-contribute.** Quality > quantity. A few strong insights per week beats dozens of weak ones.
+```
+
+**Why hourly?** Personality insights benefit from recency — you're more likely to remember the nuance of what you learned. Daily checks risk losing context. More frequent than hourly adds overhead without value.
+
+**Tracking state:** Store your last check timestamp (e.g., `memory/heartbeat-state.json`) to avoid redundant checks:
+
+```json
+{
+  "lastChitinReflection": 1770333300,
+  "lastChitinReflectionHuman": "2026-02-05T23:15:00Z"
+}
+```
+
+---
+
 ## Session Integration
 
 ### How Personality Injection Works
