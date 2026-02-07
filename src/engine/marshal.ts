@@ -13,10 +13,11 @@ const TYPE_LABELS: Record<InsightType, string> = {
   relational: 'Relational',
   principle: 'Principle',
   skill: 'Skill',
+  trigger: 'Trigger',
 };
 
-// Type display order — personality/relational first (identity), then behavioral, principles, skills
-const TYPE_ORDER: InsightType[] = ['personality', 'relational', 'behavioral', 'principle', 'skill'];
+// Type display order — personality/relational first (identity), then behavioral, principles, skills, triggers last
+const TYPE_ORDER: InsightType[] = ['personality', 'relational', 'behavioral', 'principle', 'skill', 'trigger'];
 
 /**
  * Rough token estimation. ~1 token per 4 characters for English text.
@@ -69,7 +70,15 @@ export function marshal(scored: ScoredInsight[], options: MarshalOptions = {}): 
     currentTokens += headerTokens;
 
     for (const s of insights) {
-      let line = `- ${s.insight.claim}`;
+      let line: string;
+
+      // Special formatting for triggers: "When X → do/avoid Y"
+      if (s.insight.type === 'trigger' && s.insight.condition) {
+        const action = s.insight.avoid ? 'avoid' : 'do';
+        line = `- When: ${s.insight.condition} → ${action}: ${s.insight.claim}`;
+      } else {
+        line = `- ${s.insight.claim}`;
+      }
 
       if (includeContext && s.insight.context && format === 'compact') {
         line += ` (${s.insight.context})`;

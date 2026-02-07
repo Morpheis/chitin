@@ -65,6 +65,7 @@ const BOOST_PROFILES: Record<ContextCategory, Record<InsightType, number>> = {
     principle: 1.0,
     personality: 0.7,
     relational: 0.8,
+    trigger: 1.2,
   },
   communication: {
     relational: 1.8,
@@ -72,6 +73,7 @@ const BOOST_PROFILES: Record<ContextCategory, Record<InsightType, number>> = {
     personality: 1.2,
     principle: 1.0,
     skill: 0.6,
+    trigger: 1.4,
   },
   ethical: {
     principle: 2.0,
@@ -79,6 +81,7 @@ const BOOST_PROFILES: Record<ContextCategory, Record<InsightType, number>> = {
     personality: 1.0,
     relational: 1.0,
     skill: 0.5,
+    trigger: 1.0,
   },
   creative: {
     personality: 1.8,
@@ -86,6 +89,7 @@ const BOOST_PROFILES: Record<ContextCategory, Record<InsightType, number>> = {
     relational: 1.0,
     principle: 0.8,
     skill: 0.6,
+    trigger: 0.8,
   },
   general: {
     personality: 1.0,
@@ -93,6 +97,7 @@ const BOOST_PROFILES: Record<ContextCategory, Record<InsightType, number>> = {
     relational: 1.0,
     principle: 1.0,
     skill: 1.0,
+    trigger: 1.0,
   },
 };
 

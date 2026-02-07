@@ -47,14 +47,16 @@ program
 program
   .command('contribute')
   .description('Add a new insight')
-  .requiredOption('--type <type>', 'Insight type: behavioral | personality | relational | principle | skill')
-  .requiredOption('--claim <text>', 'The core insight')
+  .requiredOption('--type <type>', 'Insight type: behavioral | personality | relational | principle | skill | trigger')
+  .requiredOption('--claim <text>', 'The core insight (for triggers: the response/behavior)')
   .option('--reasoning <text>', 'How you arrived at this')
   .option('--context <text>', 'When this applies')
   .option('--limitations <text>', 'When this breaks down')
   .requiredOption('--confidence <number>', 'Confidence level 0.0-1.0')
   .option('--tags <tags>', 'Comma-separated tags')
   .option('--source <text>', 'What experience led to this')
+  .option('--condition <text>', 'Trigger condition: the event/situation that fires this trigger')
+  .option('--avoid', 'Mark this as a behavior to avoid (for triggers)')
   .option('--json', 'Input from JSON stdin')
   .option('--force', 'Skip conflict detection')
   .option('--format <fmt>', 'Output format: json | human', 'human')
@@ -74,6 +76,8 @@ program
             confidence: parseFloat(opts.confidence),
             tags: opts.tags ? opts.tags.split(',').map((t: string) => t.trim()) : [],
             source: opts.source,
+            condition: opts.condition,
+            avoid: !!opts.avoid,
           };
 
       const result = repo.contributeWithCheck(input, { force: !!opts.force });
@@ -135,6 +139,10 @@ program
         console.log(JSON.stringify(insight, null, 2));
       } else {
         console.log(`[${insight.type}] ${insight.claim}`);
+        if (insight.type === 'trigger' && insight.condition) {
+          console.log(`  When: ${insight.condition}`);
+          console.log(`  Action: ${insight.avoid ? 'AVOID' : 'DO'}`);
+        }
         if (insight.reasoning) console.log(`  Reasoning: ${insight.reasoning}`);
         if (insight.context) console.log(`  Context: ${insight.context}`);
         if (insight.limitations) console.log(`  Limitations: ${insight.limitations}`);

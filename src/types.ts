@@ -1,4 +1,4 @@
-export const INSIGHT_TYPES = ['behavioral', 'personality', 'relational', 'principle', 'skill'] as const;
+export const INSIGHT_TYPES = ['behavioral', 'personality', 'relational', 'principle', 'skill', 'trigger'] as const;
 export type InsightType = typeof INSIGHT_TYPES[number];
 
 export interface Insight {
@@ -11,6 +11,10 @@ export interface Insight {
   confidence: number;
   tags: string[];
   source?: string;
+
+  // Trigger-specific fields (only used when type === 'trigger')
+  condition?: string;  // The triggering event/situation
+  avoid?: boolean;     // If true, this is a behavior to avoid rather than adopt
 
   createdAt: string;
   updatedAt: string;
@@ -27,6 +31,10 @@ export interface ContributeInput {
   confidence: number;
   tags?: string[];
   source?: string;
+
+  // Trigger-specific fields
+  condition?: string;  // The triggering event/situation
+  avoid?: boolean;     // If true, this is a behavior to avoid
 }
 
 export interface UpdateInput {
@@ -37,6 +45,10 @@ export interface UpdateInput {
   confidence?: number;
   tags?: string[];
   source?: string;
+
+  // Trigger-specific fields
+  condition?: string;
+  avoid?: boolean;
 }
 
 export interface RetrieveOptions {

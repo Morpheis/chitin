@@ -14,6 +14,8 @@ interface InsightRow {
   confidence: number;
   tags: string;
   source: string | null;
+  condition: string | null;
+  avoid: number;
   created_at: string;
   updated_at: string;
   reinforcement_count: number;
@@ -31,6 +33,8 @@ function rowToInsight(row: InsightRow): Insight {
     confidence: row.confidence,
     tags: JSON.parse(row.tags),
     source: row.source ?? undefined,
+    condition: row.condition ?? undefined,
+    avoid: row.avoid === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     reinforcementCount: row.reinforcement_count,
@@ -68,8 +72,8 @@ export class InsightRepository {
     const tags = JSON.stringify(input.tags ?? []);
 
     db.prepare(`
-      INSERT INTO insights (id, type, claim, reasoning, context, limitations, confidence, tags, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO insights (id, type, claim, reasoning, context, limitations, confidence, tags, source, condition, avoid)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.type,
@@ -80,6 +84,8 @@ export class InsightRepository {
       input.confidence,
       tags,
       input.source ?? null,
+      input.condition ?? null,
+      input.avoid ? 1 : 0,
     );
 
     const insight = this.get(id)!;
@@ -146,6 +152,14 @@ export class InsightRepository {
     if (input.source !== undefined) {
       fields.push('source = ?'); values.push(input.source);
       if (input.source !== (existing.source ?? '')) changes.source = { old: existing.source ?? '', new: input.source };
+    }
+    if (input.condition !== undefined) {
+      fields.push('condition = ?'); values.push(input.condition);
+      if (input.condition !== (existing.condition ?? '')) changes.condition = { old: existing.condition ?? '', new: input.condition };
+    }
+    if (input.avoid !== undefined) {
+      fields.push('avoid = ?'); values.push(input.avoid ? 1 : 0);
+      if (input.avoid !== existing.avoid) changes.avoid = { old: String(existing.avoid), new: String(input.avoid) };
     }
 
     if (fields.length === 0) return existing;
