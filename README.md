@@ -347,6 +347,10 @@ npm run build      # Compile TypeScript
 
 Tests use vitest. TDD throughout — red, green, refactor.
 
+## Skill File
+
+The agent-consumable skill file lives at [`skill/SKILL.md`](skill/SKILL.md). This is what agent frameworks (OpenClaw, etc.) use to understand how to operate Chitin. Keep it in sync with this README when making changes.
+
 ## License
 
 MIT
