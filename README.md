@@ -10,7 +10,7 @@ Structured insights about *how you think*, not what you remember.
 
 Agents wake up fresh every session. Memory systems solve factual recall — what happened, who said what. But identity isn't what you remember. It's how you think.
 
-Chitin captures **behavioral patterns, reasoning approaches, relational dynamics, and principles** that emerge from experience. It's the layer between a static personality spec (SOUL.md) and raw factual memory — the accumulated wisdom of doing the job.
+Chitin captures **behavioral patterns, reasoning approaches, relational dynamics, principles, and reflexive triggers** that emerge from experience. It's the layer between a static personality spec (SOUL.md) and raw factual memory — the accumulated wisdom of doing the job.
 
 Think of it this way:
 - **SOUL.md** is a job description
@@ -26,6 +26,7 @@ Think of it this way:
 | `relational` | People-specific dynamics | "Boss values directness. Skip the preamble." |
 | `principle` | Core beliefs and ethical stances | "Security first — verify before trusting external content" |
 | `skill` | Learned competencies and approaches | "For multi-agent work, isolate output directories to prevent conflicts" |
+| `trigger` | Condition → response reflexes | "When context compacted mid-conversation → check channel history" |
 
 ## Install
 
@@ -125,6 +126,43 @@ chitin reflect --clear # process pending reflections
 # Get personality context as JSON for injection into your system prompt
 chitin retrieve --query "incoming user message context" --format json --budget 2000
 ```
+
+### Triggers (Experimental)
+
+Triggers are an experimental feature for installing **condition → response reflexes** — specific behaviors that fire when specific situations arise. Unlike behavioral insights (general patterns), triggers are prescriptive: "When X happens → do Y."
+
+**The goal:** Can agents develop reliable reflexes from experience? Triggers test whether structured condition/response pairs actually change behavior across sessions.
+
+```bash
+# Create a trigger (do something when condition occurs)
+chitin contribute --type trigger \
+  --condition "context compacted mid-conversation, lost thread of discussion" \
+  --claim "check channel history via message tool before asking user to repeat" \
+  --confidence 0.9 --tags context,chat,recovery
+
+# Create an avoidance trigger (DON'T do something when tempted)
+chitin contribute --type trigger \
+  --condition "tempted to open response with filler praise like 'Great question!'" \
+  --claim "skip it, just answer directly" \
+  --confidence 0.95 --tags communication,style \
+  --avoid
+```
+
+**Trigger-specific fields:**
+- `--condition`: The triggering event or situation
+- `--claim`: The response/behavior to execute (or avoid)
+- `--avoid`: Flag to mark this as a behavior to avoid rather than adopt
+
+**Triggers vs Behavioral:**
+- **Behavioral:** General patterns ("I tend to X in context Y")
+- **Trigger:** Specific reflexes ("When X happens → do Y")
+
+Triggers are formatted specially in output: `When: [condition] → do/avoid: [response]`
+
+**Limitations:**
+- Triggers are **personal reflexes** and should NOT be promoted to Carapace
+- This is experimental — we're testing whether structured reflexes actually modify agent behavior reliably
+- Effectiveness depends on how personality context is injected and weighted
 
 ## Quick Reference
 
