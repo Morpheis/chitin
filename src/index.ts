@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { createRequire } from 'node:module';
 import { initDatabase, closeDatabase } from './db/schema.js';
 import { InsightRepository } from './db/repository.js';
 import { EmbeddingStore } from './db/embeddings.js';
@@ -15,6 +16,9 @@ import { mapInsightToContribution, mapContributionToInsight, isPromotable } from
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
+
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require('../package.json');
 
 const DEFAULT_DB_DIR = path.join(os.homedir(), '.config', 'chitin');
 const DEFAULT_DB_PATH = path.join(DEFAULT_DB_DIR, 'insights.db');
@@ -40,7 +44,7 @@ const program = new Command();
 program
   .name('chitin')
   .description('Personality persistence layer for AI agents. Structured insights about how you think, not what you remember.')
-  .version('0.1.0')
+  .version(PKG_VERSION)
   .option('--db <path>', 'Database path', DEFAULT_DB_PATH);
 
 // === contribute ===
