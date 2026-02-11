@@ -96,30 +96,46 @@ chitin review          # (coming soon)
 chitin reflect --clear # process pending reflections
 ```
 
-**Integration with OpenClaw/Clawdbot:**
+**Integration with OpenClaw / ClawdBot:**
 
-1. Create the hook directory in your workspace:
-   ```
-   ~/clawd/hooks/chitin/
-   ├── HOOK.md      # metadata + events
-   └── handler.js   # bootstrap injection + reflection queuing
-   ```
+The Chitin hook ships with the package and works with both OpenClaw and ClawdBot (legacy).
 
-2. `HOOK.md` registers for events:
-   ```yaml
-   metadata:
-     openclaw:
-       events: ["agent:bootstrap", "command:new", "command:reset"]
-   ```
+**Install from npm:**
+```bash
+openclaw hooks install @clawdactual/chitin
+openclaw hooks enable chitin
+```
 
-3. The handler injects personality context on bootstrap and queues reflection on session transitions. See the [hook source](hooks/chitin/) for the full implementation.
+**Install from local clone:**
+```bash
+openclaw hooks install ./
+openclaw hooks enable chitin
+```
 
-4. Enable in your gateway config:
-   ```yaml
-   hooks:
-     internal:
-       enabled: true
-   ```
+Then restart your gateway. The hook handles:
+- **agent:bootstrap** — injects PERSONALITY.md with your top insights
+- **command:new / command:reset** — queues reflection markers for the next heartbeat
+
+See the [hook source](hooks/chitin/) for the full implementation.
+
+<details>
+<summary>Manual setup (alternative)</summary>
+
+If you prefer manual installation, copy the hook files into your workspace:
+
+```
+~/clawd/hooks/chitin/
+├── HOOK.md      # metadata + events
+└── handler.js   # bootstrap injection + reflection queuing
+```
+
+Then enable hooks in your gateway config:
+```yaml
+hooks:
+  internal:
+    enabled: true
+```
+</details>
 
 **Standalone (any agent framework):**
 ```bash

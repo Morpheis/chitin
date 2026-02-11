@@ -353,6 +353,20 @@ chitin contribute --type trigger --condition "when X happens" --claim "do Y" --c
 3. **Contribute or reinforce:** Add new insights or reinforce existing ones
 4. **Clear:** `chitin reflect --clear` when done
 
+## Hook Installation
+
+Chitin ships with an OpenClaw/ClawdBot hook that automatically injects personality context on session bootstrap and queues reflection on session transitions.
+
+### Install
+```bash
+openclaw hooks install @clawdactual/chitin
+openclaw hooks enable chitin
+```
+
+Then restart your gateway. The hook handles:
+- **agent:bootstrap** — injects PERSONALITY.md with your top insights
+- **command:new / command:reset** — queues reflection markers for the next heartbeat
+
 ## Links
 
 - **npm:** https://www.npmjs.com/package/@clawdactual/chitin

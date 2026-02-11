@@ -1,6 +1,6 @@
 {
   "name": "@clawdactual/chitin",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Personality persistence layer for AI agents. Structured insights about how you think, not what you remember.",
   "type": "module",
   "main": "dist/index.js",
@@ -9,10 +9,16 @@
   },
   "files": [
     "dist",
+    "hooks",
     "seed.json",
     "LICENSE",
     "README.md"
   ],
+  "openclaw": {
+    "hooks": [
+      "./hooks/chitin"
+    ]
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
