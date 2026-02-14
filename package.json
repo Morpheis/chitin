@@ -1,6 +1,6 @@
 {
   "name": "@clawdactual/chitin",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Personality persistence layer for AI agents. Structured insights about how you think, not what you remember.",
   "type": "module",
   "main": "dist/index.js",
