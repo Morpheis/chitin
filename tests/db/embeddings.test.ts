@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, closeDatabase } from '../../src/db/schema.js';
 import { InsightRepository } from '../../src/db/repository.js';
-import { EmbeddingStore } from '../../src/db/embeddings.js';
+import { EmbeddingStore, type EmbeddingMetadata } from '../../src/db/embeddings.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -139,5 +139,125 @@ describe('EmbeddingStore', () => {
     expect(missing).toContain(i2.id);
     expect(missing).toContain(i3.id);
     expect(missing).not.toContain(i1.id);
+  });
+
+  // --- Embedding Metadata Tests ---
+
+  describe('metadata', () => {
+    it('stores and retrieves metadata for an embedding', () => {
+      const insight = repo.contribute({ type: 'behavioral', claim: 'Test metadata', confidence: 0.8 });
+      store.upsert(insight.id, new Float32Array([0.1, 0.2]));
+      store.upsertMetadata(insight.id, 'voyage', 'voyage-3-lite', 1024);
+
+      const meta = store.getMetadata(insight.id);
+      expect(meta).toBeTruthy();
+      expect(meta!.insightId).toBe(insight.id);
+      expect(meta!.provider).toBe('voyage');
+      expect(meta!.model).toBe('voyage-3-lite');
+      expect(meta!.dimensions).toBe(1024);
+      expect(meta!.createdAt).toBeTruthy();
+    });
+
+    it('returns null for non-existent metadata', () => {
+      expect(store.getMetadata('non-existent')).toBeNull();
+    });
+
+    it('upserts metadata (overwrite)', () => {
+      const insight = repo.contribute({ type: 'behavioral', claim: 'Test overwrite', confidence: 0.8 });
+      store.upsert(insight.id, new Float32Array([0.1, 0.2]));
+      store.upsertMetadata(insight.id, 'voyage', 'voyage-3-lite', 1024);
+      store.upsertMetadata(insight.id, 'openai', 'text-embedding-3-small', 1536);
+
+      const meta = store.getMetadata(insight.id);
+      expect(meta!.provider).toBe('openai');
+      expect(meta!.model).toBe('text-embedding-3-small');
+      expect(meta!.dimensions).toBe(1536);
+    });
+
+    it('cascades delete of metadata when insight is archived', () => {
+      const insight = repo.contribute({ type: 'behavioral', claim: 'Delete cascade', confidence: 0.8 });
+      store.upsert(insight.id, new Float32Array([0.1, 0.2]));
+      store.upsertMetadata(insight.id, 'voyage', 'voyage-3-lite', 1024);
+
+      repo.archive(insight.id);
+      expect(store.getMetadata(insight.id)).toBeNull();
+    });
+
+    it('getActiveProviderInfo returns the most common provider/model', () => {
+      const i1 = repo.contribute({ type: 'behavioral', claim: 'B1', confidence: 0.8 });
+      const i2 = repo.contribute({ type: 'personality', claim: 'P1', confidence: 0.7 });
+      const i3 = repo.contribute({ type: 'skill', claim: 'S1', confidence: 0.9 });
+
+      store.upsert(i1.id, new Float32Array([0.1, 0.2]));
+      store.upsert(i2.id, new Float32Array([0.3, 0.4]));
+      store.upsert(i3.id, new Float32Array([0.5, 0.6]));
+
+      store.upsertMetadata(i1.id, 'voyage', 'voyage-3-lite', 1024);
+      store.upsertMetadata(i2.id, 'voyage', 'voyage-3-lite', 1024);
+      store.upsertMetadata(i3.id, 'openai', 'text-embedding-3-small', 1536);
+
+      const info = store.getActiveProviderInfo();
+      expect(info).toBeTruthy();
+      expect(info!.provider).toBe('voyage');
+      expect(info!.model).toBe('voyage-3-lite');
+      expect(info!.count).toBe(2);
+    });
+
+    it('getActiveProviderInfo returns null when no metadata exists', () => {
+      expect(store.getActiveProviderInfo()).toBeNull();
+    });
+
+    it('countEmbeddings returns correct count', () => {
+      expect(store.countEmbeddings()).toBe(0);
+
+      const i1 = repo.contribute({ type: 'behavioral', claim: 'B1', confidence: 0.8 });
+      const i2 = repo.contribute({ type: 'personality', claim: 'P1', confidence: 0.7 });
+
+      store.upsert(i1.id, new Float32Array([0.1, 0.2]));
+      expect(store.countEmbeddings()).toBe(1);
+
+      store.upsert(i2.id, new Float32Array([0.3, 0.4]));
+      expect(store.countEmbeddings()).toBe(2);
+    });
+
+    it('findMismatchedEmbeddings identifies provider/model mismatches', () => {
+      const i1 = repo.contribute({ type: 'behavioral', claim: 'B1', confidence: 0.8 });
+      const i2 = repo.contribute({ type: 'personality', claim: 'P1', confidence: 0.7 });
+
+      store.upsert(i1.id, new Float32Array([0.1, 0.2]));
+      store.upsert(i2.id, new Float32Array([0.3, 0.4]));
+
+      store.upsertMetadata(i1.id, 'voyage', 'voyage-3-lite', 1024);
+      store.upsertMetadata(i2.id, 'openai', 'text-embedding-3-small', 1536);
+
+      const mismatched = store.findMismatchedEmbeddings('voyage', 'voyage-3-lite');
+      expect(mismatched).toHaveLength(1);
+      expect(mismatched[0]).toBe(i2.id);
+    });
+
+    it('remove deletes embedding and metadata', () => {
+      const insight = repo.contribute({ type: 'behavioral', claim: 'Remove me', confidence: 0.8 });
+      store.upsert(insight.id, new Float32Array([0.1, 0.2]));
+      store.upsertMetadata(insight.id, 'voyage', 'voyage-3-lite', 1024);
+
+      store.remove(insight.id);
+      expect(store.get(insight.id)).toBeNull();
+      expect(store.getMetadata(insight.id)).toBeNull();
+    });
+
+    it('clearAll removes all embeddings and metadata', () => {
+      const i1 = repo.contribute({ type: 'behavioral', claim: 'B1', confidence: 0.8 });
+      const i2 = repo.contribute({ type: 'personality', claim: 'P1', confidence: 0.7 });
+
+      store.upsert(i1.id, new Float32Array([0.1, 0.2]));
+      store.upsert(i2.id, new Float32Array([0.3, 0.4]));
+      store.upsertMetadata(i1.id, 'voyage', 'voyage-3-lite', 1024);
+      store.upsertMetadata(i2.id, 'voyage', 'voyage-3-lite', 1024);
+
+      store.clearAll();
+      expect(store.countEmbeddings()).toBe(0);
+      expect(store.getMetadata(i1.id)).toBeNull();
+      expect(store.getMetadata(i2.id)).toBeNull();
+    });
   });
 });
