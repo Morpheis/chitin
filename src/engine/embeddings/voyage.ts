@@ -2,12 +2,12 @@ import type { EmbeddingProvider } from './provider.js';
 
 const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
 
-/** Default model — cheapest, 1024 dimensions, good for personality insights */
+/** Default model — cheapest, 512 dimensions, good for personality insights */
 const DEFAULT_MODEL = 'voyage-3-lite';
 
 /** Model → dimension mapping for known Voyage models */
 const MODEL_DIMENSIONS: Record<string, number> = {
-  'voyage-3-lite': 1024,
+  'voyage-3-lite': 512,
   'voyage-3': 1024,
   'voyage-code-3': 1024,
 };

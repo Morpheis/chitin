@@ -8,7 +8,7 @@ describe('createProvider', () => {
     expect(provider).toBeInstanceOf(VoyageProvider);
     expect(provider.name).toBe('voyage');
     expect(provider.model).toBe('voyage-3-lite');
-    expect(provider.dimensions).toBe(1024);
+    expect(provider.dimensions).toBe(512);
   });
 
   it('passes custom model to VoyageProvider', () => {

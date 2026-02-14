@@ -33,7 +33,7 @@ describe('VoyageProvider', () => {
     const provider = new VoyageProvider({ apiKey: 'test-key' });
     expect(provider.name).toBe('voyage');
     expect(provider.model).toBe('voyage-3-lite');
-    expect(provider.dimensions).toBe(1024);
+    expect(provider.dimensions).toBe(512);
   });
 
   it('respects custom model', () => {
@@ -46,7 +46,7 @@ describe('VoyageProvider', () => {
     const provider = new VoyageProvider({ apiKey: 'test-key-123' });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
-      mockResponse(voyageResponse([new Array(1024).fill(0.1)]))
+      mockResponse(voyageResponse([new Array(512).fill(0.1)]))
     );
 
     await provider.embed(['hello world']);
@@ -69,7 +69,7 @@ describe('VoyageProvider', () => {
 
   it('parses response into Float32Array[]', async () => {
     const provider = new VoyageProvider({ apiKey: 'test-key' });
-    const fakeEmbedding = new Array(1024).fill(0).map((_, i) => i * 0.001);
+    const fakeEmbedding = new Array(512).fill(0).map((_, i) => i * 0.001);
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       mockResponse(voyageResponse([fakeEmbedding]))
@@ -78,16 +78,16 @@ describe('VoyageProvider', () => {
     const results = await provider.embed(['test text']);
     expect(results).toHaveLength(1);
     expect(results[0]).toBeInstanceOf(Float32Array);
-    expect(results[0].length).toBe(1024);
+    expect(results[0].length).toBe(512);
     expect(results[0][0]).toBeCloseTo(0);
     expect(results[0][500]).toBeCloseTo(0.5);
   });
 
   it('handles batch of multiple texts', async () => {
     const provider = new VoyageProvider({ apiKey: 'test-key' });
-    const e1 = new Array(1024).fill(0.1);
-    const e2 = new Array(1024).fill(0.2);
-    const e3 = new Array(1024).fill(0.3);
+    const e1 = new Array(512).fill(0.1);
+    const e2 = new Array(512).fill(0.2);
+    const e3 = new Array(512).fill(0.3);
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       mockResponse(voyageResponse([e1, e2, e3]))
@@ -139,9 +139,9 @@ describe('VoyageProvider', () => {
   it('throws on dimension mismatch', async () => {
     const provider = new VoyageProvider({ apiKey: 'test-key' });
 
-    // Return wrong dimensions (512 instead of 1024)
+    // Return wrong dimensions (256 instead of 512)
     globalThis.fetch = vi.fn().mockResolvedValue(
-      mockResponse(voyageResponse([new Array(512).fill(0.1)]))
+      mockResponse(voyageResponse([new Array(256).fill(0.1)]))
     );
 
     await expect(provider.embed(['test'])).rejects.toThrow('Dimension mismatch');
