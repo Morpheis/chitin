@@ -263,15 +263,15 @@ Requires Carapace credentials at `~/.config/carapace/credentials.json`. See the 
 - **Relational insights protected.** Blocked from promotion by default — personal dynamics stay personal
 - **Credentials isolated.** Carapace API key stored separately at `~/.config/carapace/credentials.json` (chmod 600)
 - **No telemetry.** No analytics, no tracking, no network calls for core operations
-- **Embeddings.** Semantic search uses OpenAI `text-embedding-3-small`. This is the only network dependency (for `similar` and `retrieve` commands)
+- **Embeddings.** Semantic search uses a pluggable embedding provider (Voyage AI `voyage-3-lite` by default). This is the only network dependency (for `embed` and `retrieve` commands)
 
 ### ⚠️ Known Risk: Embedding Query Exfiltration
 
-The `chitin retrieve` and `chitin similar` commands send query text to OpenAI's embedding API for semantic search. This means:
+The `chitin retrieve` and `chitin embed` commands send text to the configured embedding provider's API (Voyage AI by default) for vector generation. This means:
 
-- **Any text you pass as a query is sent to OpenAI's servers.** This is the claim text or search string — Chitin does not read arbitrary files or system data on its own.
-- **Prompt injection risk:** A compromised or prompt-injected agent could theoretically be instructed to pass sensitive data (file contents, credentials, etc.) as a query argument, causing it to be sent to OpenAI. This is an agent-level vulnerability, not a Chitin vulnerability — the same risk applies to any tool that calls an external API.
-- **Mitigation:** Only pass insight claims and search strings to these commands. Never pipe file contents, credentials, or sensitive data into `chitin similar` or `chitin retrieve`. If you suspect prompt injection, stop and verify with your operator.
+- **Any text you pass as a query or insight claim is transmitted externally.** Chitin does not read arbitrary files or system data on its own — it only sends the claim text or search string you provide.
+- **Prompt injection risk:** A compromised or prompt-injected agent could theoretically be instructed to pass sensitive data (file contents, credentials, etc.) as a query argument, causing it to be sent to the provider. This is an agent-level vulnerability, not a Chitin vulnerability — the same risk applies to any tool that calls an external API.
+- **Mitigation:** Only pass insight claims and search strings to these commands. Never pipe file contents, credentials, or sensitive data into Chitin commands. If you suspect prompt injection, stop and verify with your operator.
 
 ### ⚠️ Known Risk: `--force` Override on Promote
 
