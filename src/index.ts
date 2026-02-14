@@ -10,6 +10,8 @@ import { InsightHistory } from './db/history.js';
 import { marshal, estimateTokens } from './engine/marshal.js';
 import { detectContext } from './engine/context-detect.js';
 import type { InsightType, INSIGHT_TYPES } from './types.js';
+import { loadEmbeddingConfig } from './engine/embeddings/config.js';
+import { createProvider } from './engine/embeddings/factory.js';
 import { loadCarapaceConfig } from './carapace/config.js';
 import { CarapaceClient, CarapaceError } from './carapace/client.js';
 import { mapInsightToContribution, mapContributionToInsight, isPromotable } from './carapace/mapper.js';
@@ -544,7 +546,7 @@ program
   .option('--budget <number>', 'Token budget for output', '2000')
   .option('--max-results <number>', 'Maximum insights to consider', '15')
   .option('--format <fmt>', 'Output format: compact | json | full', 'compact')
-  .action((opts) => {
+  .action(async (opts) => {
     const dbPath = program.opts().db;
     const { repo, embeddings } = getDb(dbPath);
 
@@ -552,8 +554,6 @@ program
       const engine = new RetrievalEngine(repo, embeddings);
       const context = detectContext(opts.query);
 
-      // For now, without real embeddings, fall back to listing by type boost
-      // TODO: integrate real embedding generation
       const allInsights = repo.list();
       
       if (allInsights.length === 0) {
@@ -565,27 +565,46 @@ program
         return;
       }
 
-      // Check if we have embeddings
-      const missing = embeddings.findMissingEmbeddings();
-      const hasEmbeddings = missing.length < allInsights.length;
-
+      // Try semantic retrieval with real embeddings
       let scoredInsights;
-      if (hasEmbeddings) {
-        // Use semantic retrieval (need query embedding — placeholder for now)
-        // TODO: generate real embedding for query
-        console.error('Note: Real embedding generation not yet wired. Using type-boosted fallback.');
-      }
-      
-      // Fallback: score all insights using type boosts and confidence
-      scoredInsights = allInsights.map(insight => {
-        const typeBoost = context.typeBoosts[insight.type] ?? 1.0;
-        const reinforcementFactor = Math.log2(insight.reinforcementCount + 2);
-        const score = insight.confidence * reinforcementFactor * typeBoost;
-        return { insight, similarity: 1.0, score };
-      });
+      const embeddingCount = embeddings.countEmbeddings();
+      const providerInfo = embeddings.getActiveProviderInfo();
 
-      scoredInsights.sort((a, b) => b.score - a.score);
-      scoredInsights = scoredInsights.slice(0, parseInt(opts.maxResults));
+      if (embeddingCount > 0 && providerInfo) {
+        // We have embeddings — try to generate a query embedding
+        let queryEmbedding: Float32Array | null = null;
+        try {
+          const config = loadEmbeddingConfig(providerInfo.provider);
+          const provider = createProvider(providerInfo.provider, {
+            model: providerInfo.model,
+            apiKey: config.apiKey,
+          });
+          const [embedding] = await provider.embed([opts.query]);
+          queryEmbedding = embedding;
+        } catch {
+          // API key missing or API error — fall back gracefully
+        }
+
+        if (queryEmbedding) {
+          scoredInsights = engine.retrieve(queryEmbedding, {
+            maxResults: parseInt(opts.maxResults),
+            typeBoosts: context.typeBoosts,
+          });
+        }
+      }
+
+      // Fallback: score all insights using type boosts and confidence (no semantic search)
+      if (!scoredInsights) {
+        scoredInsights = allInsights.map(insight => {
+          const typeBoost = context.typeBoosts[insight.type] ?? 1.0;
+          const reinforcementFactor = Math.log2(insight.reinforcementCount + 2);
+          const score = insight.confidence * reinforcementFactor * typeBoost;
+          return { insight, similarity: 1.0, score };
+        });
+
+        scoredInsights.sort((a, b) => b.score - a.score);
+        scoredInsights = scoredInsights.slice(0, parseInt(opts.maxResults));
+      }
 
       const budget = parseInt(opts.budget);
 
@@ -608,6 +627,139 @@ program
       } else {
         const output = marshal(scoredInsights, { tokenBudget: budget });
         console.log(output);
+      }
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === embed ===
+program
+  .command('embed')
+  .description('Generate embeddings for insights using the configured provider')
+  .option('--provider <name>', 'Embedding provider (default: voyage)', 'voyage')
+  .option('--model <name>', 'Model name (default: provider default)')
+  .option('--force', 'Re-embed all insights, even those already embedded')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action(async (opts) => {
+    const dbPath = program.opts().db;
+    const { repo, embeddings } = getDb(dbPath);
+
+    try {
+      // Load config (validates API key is present)
+      const config = loadEmbeddingConfig(opts.provider, opts.model);
+      const provider = createProvider(config.provider, {
+        model: config.model,
+        apiKey: config.apiKey,
+      });
+
+      const allInsights = repo.list();
+      if (allInsights.length === 0) {
+        console.log('No insights to embed.');
+        return;
+      }
+
+      // Determine which insights need embedding
+      let insightIds: string[];
+      if (opts.force) {
+        // Re-embed everything — clear old data first
+        embeddings.clearAll();
+        insightIds = allInsights.map(i => i.id);
+      } else {
+        insightIds = embeddings.findMissingEmbeddings();
+      }
+
+      if (insightIds.length === 0) {
+        if (opts.format === 'json') {
+          console.log(JSON.stringify({ embedded: 0, total: allInsights.length, provider: config.provider, model: config.model }));
+        } else {
+          console.log('All insights already have embeddings. Use --force to re-embed.');
+        }
+        return;
+      }
+
+      if (opts.format !== 'json') {
+        console.log(`Embedding ${insightIds.length} insight(s) with ${config.provider}/${config.model}...`);
+      }
+
+      // Build texts for embedding: claim + context for richer vectors
+      const insightsToEmbed = insightIds.map(id => {
+        const insight = allInsights.find(i => i.id === id) ?? repo.get(id);
+        return insight!;
+      });
+
+      const texts = insightsToEmbed.map(i => {
+        const parts = [i.claim];
+        if (i.context) parts.push(i.context);
+        if (i.reasoning) parts.push(i.reasoning);
+        return parts.join(' — ');
+      });
+
+      // Generate embeddings
+      const vectors = await provider.embed(texts);
+
+      // Store embeddings and metadata
+      for (let i = 0; i < insightsToEmbed.length; i++) {
+        embeddings.upsert(insightsToEmbed[i].id, vectors[i]);
+        embeddings.upsertMetadata(
+          insightsToEmbed[i].id,
+          config.provider,
+          config.model,
+          provider.dimensions
+        );
+      }
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify({
+          embedded: insightIds.length,
+          total: allInsights.length,
+          provider: config.provider,
+          model: config.model,
+          dimensions: provider.dimensions,
+        }));
+      } else {
+        console.log(`✓ Embedded ${insightIds.length} insight(s) (${provider.dimensions} dimensions)`);
+      }
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === embed-status ===
+program
+  .command('embed-status')
+  .description('Show embedding status for insights')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action((opts) => {
+    const dbPath = program.opts().db;
+    const { repo, embeddings } = getDb(dbPath);
+
+    try {
+      const totalInsights = repo.list().length;
+      const embeddedCount = embeddings.countEmbeddings();
+      const missingCount = embeddings.findMissingEmbeddings().length;
+      const providerInfo = embeddings.getActiveProviderInfo();
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify({
+          total: totalInsights,
+          embedded: embeddedCount,
+          missing: missingCount,
+          provider: providerInfo?.provider ?? null,
+          model: providerInfo?.model ?? null,
+          dimensions: providerInfo?.dimensions ?? null,
+        }));
+      } else {
+        console.log('Embedding Status');
+        console.log(`  Total insights: ${totalInsights}`);
+        console.log(`  With embeddings: ${embeddedCount}`);
+        console.log(`  Missing embeddings: ${missingCount}`);
+        if (providerInfo) {
+          console.log(`  Provider: ${providerInfo.provider}/${providerInfo.model}`);
+          console.log(`  Dimensions: ${providerInfo.dimensions}`);
+        } else {
+          console.log('  Provider: (none — run `chitin embed` to generate)');
+        }
       }
     } finally {
       closeDatabase();

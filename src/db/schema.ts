@@ -45,6 +45,16 @@ CREATE TABLE IF NOT EXISTS insight_embeddings (
 );
 `;
 
+const CREATE_EMBEDDING_METADATA = `
+CREATE TABLE IF NOT EXISTS embedding_metadata (
+  insight_id TEXT PRIMARY KEY REFERENCES insights(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
 const CREATE_HISTORY = `
 CREATE TABLE IF NOT EXISTS insight_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,6 +87,7 @@ export function initDatabase(dbPath: string): void {
   // Create tables
   db.exec(CREATE_INSIGHTS);
   db.exec(CREATE_EMBEDDINGS);
+  db.exec(CREATE_EMBEDDING_METADATA);
   db.exec(CREATE_HISTORY);
   db.exec(CREATE_HISTORY_INDEX);
 
