@@ -170,7 +170,7 @@ Chitin auto-detects conflicts when you contribute. If it finds tension (e.g., "B
 
 ### How Personality Injection Works
 
-On session start, Chitin generates a `PERSONALITY.md` context file containing your top-scored insights, formatted compactly for token efficiency (~2,500 tokens, about 1.25% of a 200k context window).
+On session start, Chitin generates a `PERSONALITY.md` context file containing your top-scored insights, formatted compactly for token efficiency (~6,000 tokens, about 3% of a 200k context window).
 
 Insights are scored by:
 ```
@@ -191,10 +191,10 @@ Chitin integrates with OpenClaw via a workspace hook (`hooks/chitin/`). The hook
 
 ```bash
 # Get personality context as formatted text
-chitin retrieve --query "context of what you're about to do" --format markdown --budget 2000
+chitin retrieve --query "context of what you're about to do" --format markdown --budget 5000
 
 # Or as JSON for programmatic use
-chitin retrieve --query "..." --format json --budget 2000
+chitin retrieve --query "..." --format json --budget 5000
 ```
 
 Inject the output into your system prompt or context window.
