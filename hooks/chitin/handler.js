@@ -30,6 +30,7 @@ function handleBootstrap(event) {
   if (!context?.bootstrapFiles || !Array.isArray(context.bootstrapFiles)) return;
   if (!fs.existsSync(DB_PATH)) return;
 
+  const workspaceDir = context.workspaceDir || context.repo || os.homedir();
   const query = buildQueryFromContext(context, event.sessionKey || "unknown");
   if (!query) return;
 
@@ -40,8 +41,16 @@ function handleBootstrap(event) {
 
     if (!result || result.includes("No insights stored")) return;
 
+    // Guard against duplicate entries (array is cached and reused across calls)
+    const alreadyPresent = context.bootstrapFiles.some(f => f.name === "PERSONALITY.md");
+    if (alreadyPresent) {
+      log(`PERSONALITY.md already in bootstrapFiles, skipping duplicate push`);
+      return;
+    }
+
     context.bootstrapFiles.push({
       name: "PERSONALITY.md",
+      path: path.join(workspaceDir, "PERSONALITY.md"),
       content: [
         "# Personality Context (Chitin)",
         "",
@@ -51,7 +60,6 @@ function handleBootstrap(event) {
         result,
       ].join("\n"),
       missing: false,
-      source: "chitin-hook",
     });
 
     log(`Injected personality context (${result.length} chars) for ${event.sessionKey}`);

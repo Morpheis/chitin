@@ -179,11 +179,13 @@ score = relevance × confidence × log₂(reinforcements + 2) × typeBoost
 
 Context detection auto-boosts relevant types — coding tasks boost `skill`, communication boosts `relational`, ethical questions boost `principle`.
 
-### For Clawdbot Agents
+### For OpenClaw Agents
 
-Chitin integrates with Clawdbot via hooks. The hook:
-1. Injects personality context on session bootstrap
-2. Queues reflection markers on `/new` or `/reset`
+Chitin integrates with OpenClaw via a workspace hook (`hooks/chitin/`). The hook:
+1. **Bootstrap injection** (`agent:bootstrap`) — retrieves personality context and pushes a synthetic `PERSONALITY.md` into `context.bootstrapFiles`. Each entry **must** include a `path` property (string) or OpenClaw's `sanitizeBootstrapFiles` will silently drop it.
+2. **Reflection queuing** (`command:new`, `command:reset`) — writes a marker to `~/.config/chitin/pending-reflection.json` so the next heartbeat can extract insights from the ended session.
+
+**Important:** OpenClaw caches `bootstrapFiles` by session key and reuses the same array reference across calls within a process. The hook guards against duplicate pushes by checking if `PERSONALITY.md` is already present before pushing.
 
 ### For Any Agent Framework
 
