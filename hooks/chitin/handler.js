@@ -14,7 +14,7 @@ import os from "node:os";
 const DB_PATH = path.join(os.homedir(), ".config", "chitin", "insights.db");
 const CHITIN_DIR = path.join(os.homedir(), "Personal", "chitin");
 const CHITIN_DIST = path.join(CHITIN_DIR, "dist", "index.js");
-const DEFAULT_BUDGET = 2000;
+const DEFAULT_BUDGET = 5000;
 const DEBUG = !!process.env.CHITIN_DEBUG;
 
 function log(...args) {
