@@ -179,4 +179,69 @@ describe('InsightHistory', () => {
       expect(recent.length).toBeGreaterThan(0);
     });
   });
+
+  describe('reinforcement source tracking', () => {
+    it('recordReinforce stores source text when provided', () => {
+      const insight = repo.contribute({
+        type: 'skill',
+        claim: 'TDD works well',
+        confidence: 0.8,
+      });
+
+      repo.reinforce(insight.id, {
+        source: 'Bug #123 confirmed this',
+        evidence: 'external',
+      });
+
+      const entries = history.getHistory(insight.id);
+      const reinforceEntry = entries.find(e => e.changeType === 'reinforce');
+      expect(reinforceEntry).toBeTruthy();
+      // Source should contain both the count and the source text
+      expect(reinforceEntry!.source).toContain('reinforce:1');
+      expect(reinforceEntry!.source).toContain('[external] Bug #123 confirmed this');
+    });
+
+    it('recordReinforce works without source (backward compat)', () => {
+      const insight = repo.contribute({
+        type: 'skill',
+        claim: 'TDD works well',
+        confidence: 0.8,
+      });
+
+      repo.reinforce(insight.id);
+
+      const entries = history.getHistory(insight.id);
+      const reinforceEntry = entries.find(e => e.changeType === 'reinforce');
+      expect(reinforceEntry).toBeTruthy();
+      expect(reinforceEntry!.source).toBe('reinforce:1');
+    });
+
+    it('recordReinforce stores source text without evidence', () => {
+      const insight = repo.contribute({
+        type: 'skill',
+        claim: 'Test insight',
+        confidence: 0.7,
+      });
+
+      repo.reinforce(insight.id, { source: 'Just noticed this again' });
+
+      const entries = history.getHistory(insight.id);
+      const reinforceEntry = entries.find(e => e.changeType === 'reinforce');
+      expect(reinforceEntry!.source).toBe('reinforce:1|Just noticed this again');
+    });
+
+    it('recordReinforce stores evidence without source text', () => {
+      const insight = repo.contribute({
+        type: 'skill',
+        claim: 'Test insight',
+        confidence: 0.7,
+      });
+
+      repo.reinforce(insight.id, { evidence: 'internal' });
+
+      const entries = history.getHistory(insight.id);
+      const reinforceEntry = entries.find(e => e.changeType === 'reinforce');
+      expect(reinforceEntry!.source).toBe('reinforce:1|[internal]');
+    });
+  });
 });
