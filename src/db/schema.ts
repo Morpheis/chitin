@@ -32,6 +32,10 @@ const MIGRATE_ADD_AVOID_FIELD = `
 ALTER TABLE insights ADD COLUMN avoid INTEGER NOT NULL DEFAULT 0;
 `;
 
+const MIGRATE_ADD_PROVENANCE_FIELD = `
+ALTER TABLE insights ADD COLUMN provenance TEXT;
+`;
+
 // Update CHECK constraint (SQLite doesn't support ALTER CHECK, so we recreate)
 const MIGRATE_UPDATE_TYPE_CHECK = `
 -- SQLite doesn't allow modifying CHECK constraints directly.
@@ -106,6 +110,13 @@ export function initDatabase(dbPath: string): void {
     if (!e.message.includes('duplicate column')) throw e;
   }
 
+  try {
+    db.exec(MIGRATE_ADD_PROVENANCE_FIELD);
+  } catch (e: any) {
+    // Column already exists, ignore
+    if (!e.message.includes('duplicate column')) throw e;
+  }
+
   // Migrate CHECK constraint to include 'trigger' type
   // SQLite doesn't support ALTER CHECK, so we recreate the table
   migrateToTriggerSupport(db);
@@ -136,6 +147,7 @@ function migrateToTriggerSupport(db: DatabaseType): void {
       source TEXT,
       condition TEXT,
       avoid INTEGER NOT NULL DEFAULT 0,
+      provenance TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       reinforcement_count INTEGER NOT NULL DEFAULT 0,

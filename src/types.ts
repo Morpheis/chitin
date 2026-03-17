@@ -1,6 +1,9 @@
 export const INSIGHT_TYPES = ['behavioral', 'personality', 'relational', 'principle', 'skill', 'trigger'] as const;
 export type InsightType = typeof INSIGHT_TYPES[number];
 
+export const PROVENANCE_TYPES = ['directive', 'observation', 'social', 'correction', 'reflection', 'external'] as const;
+export type Provenance = typeof PROVENANCE_TYPES[number];
+
 export interface Insight {
   id: string;
   type: InsightType;
@@ -11,6 +14,7 @@ export interface Insight {
   confidence: number;
   tags: string[];
   source?: string;
+  provenance?: Provenance;
 
   // Trigger-specific fields (only used when type === 'trigger')
   condition?: string;  // The triggering event/situation
@@ -31,6 +35,7 @@ export interface ContributeInput {
   confidence: number;
   tags?: string[];
   source?: string;
+  provenance?: Provenance;
 
   // Trigger-specific fields
   condition?: string;  // The triggering event/situation
@@ -45,6 +50,7 @@ export interface UpdateInput {
   confidence?: number;
   tags?: string[];
   source?: string;
+  provenance?: Provenance;
 
   // Trigger-specific fields
   condition?: string;

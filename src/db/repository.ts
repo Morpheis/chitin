@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { getDatabase } from './schema.js';
-import type { Insight, ContributeInput, ContributeResult, UpdateInput, InsightType, INSIGHT_TYPES } from '../types.js';
+import type { Insight, ContributeInput, ContributeResult, UpdateInput, InsightType, Provenance, INSIGHT_TYPES } from '../types.js';
 import { detectConflicts, type ConflictResult } from '../engine/conflicts.js';
 import { InsightHistory } from './history.js';
 
@@ -14,6 +14,7 @@ interface InsightRow {
   confidence: number;
   tags: string;
   source: string | null;
+  provenance: string | null;
   condition: string | null;
   avoid: number;
   created_at: string;
@@ -33,6 +34,7 @@ function rowToInsight(row: InsightRow): Insight {
     confidence: row.confidence,
     tags: JSON.parse(row.tags),
     source: row.source ?? undefined,
+    provenance: (row.provenance as Provenance) ?? undefined,
     condition: row.condition ?? undefined,
     avoid: row.avoid === 1,
     createdAt: row.created_at,
@@ -55,6 +57,7 @@ export interface ListOptions {
   types?: InsightType[];
   tags?: string[];
   minConfidence?: number;
+  provenance?: Provenance;
 }
 
 export interface InsightStats {
@@ -72,8 +75,8 @@ export class InsightRepository {
     const tags = JSON.stringify(input.tags ?? []);
 
     db.prepare(`
-      INSERT INTO insights (id, type, claim, reasoning, context, limitations, confidence, tags, source, condition, avoid)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO insights (id, type, claim, reasoning, context, limitations, confidence, tags, source, provenance, condition, avoid)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.type,
@@ -84,6 +87,7 @@ export class InsightRepository {
       input.confidence,
       tags,
       input.source ?? null,
+      input.provenance ?? null,
       input.condition ?? null,
       input.avoid ? 1 : 0,
     );
@@ -153,6 +157,10 @@ export class InsightRepository {
       fields.push('source = ?'); values.push(input.source);
       if (input.source !== (existing.source ?? '')) changes.source = { old: existing.source ?? '', new: input.source };
     }
+    if (input.provenance !== undefined) {
+      fields.push('provenance = ?'); values.push(input.provenance);
+      if (input.provenance !== (existing.provenance ?? '')) changes.provenance = { old: existing.provenance ?? '', new: input.provenance };
+    }
     if (input.condition !== undefined) {
       fields.push('condition = ?'); values.push(input.condition);
       if (input.condition !== (existing.condition ?? '')) changes.condition = { old: existing.condition ?? '', new: input.condition };
@@ -190,7 +198,7 @@ export class InsightRepository {
    */
   static readonly CONFIDENCE_ADJUSTMENT_RATE = 0.05;
 
-  reinforce(id: string): Insight {
+  reinforce(id: string, options?: { source?: string; evidence?: string }): Insight {
     const db = getDatabase();
     const existing = this.get(id);
     if (!existing) {
@@ -214,8 +222,16 @@ export class InsightRepository {
       WHERE id = ?
     `).run(newConfidence, id);
 
+    // Build source text for history
+    let reinforceSource = options?.source;
+    if (options?.evidence) {
+      reinforceSource = reinforceSource
+        ? `[${options.evidence}] ${reinforceSource}`
+        : `[${options.evidence}]`;
+    }
+
     // Record history
-    this.history.recordReinforce(id, oldConfidence, newConfidence, newCount);
+    this.history.recordReinforce(id, oldConfidence, newConfidence, newCount, reinforceSource);
 
     return this.get(id)!;
   }
@@ -352,6 +368,11 @@ export class InsightRepository {
       const placeholders = options.types.map(() => '?').join(', ');
       conditions.push(`type IN (${placeholders})`);
       params.push(...options.types);
+    }
+
+    if (options?.provenance !== undefined) {
+      conditions.push('provenance = ?');
+      params.push(options.provenance);
     }
 
     if (options?.minConfidence !== undefined) {
