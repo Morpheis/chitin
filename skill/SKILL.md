@@ -74,12 +74,30 @@ chitin contribute --type skill \
   --claim "TDD: red, green, refactor. Write one failing test, make it pass, clean up." \
   --confidence 0.9 --tags tdd,testing,workflow
 
+# Contribution with provenance (how the insight was authored)
+chitin contribute --type behavioral \
+  --claim "On clear tasks, execute first, narrate minimally" \
+  --confidence 0.85 --provenance directive
+
 # Check for similar insights first (prevents duplicates)
 chitin similar "TDD workflow"
 
 # Force contribute even if conflicts detected
 chitin contribute --type behavioral --claim "..." --confidence 0.8 --force
 ```
+
+**Provenance types** (`--provenance <type>`, optional):
+
+| Type | Meaning | Example |
+|------|---------|---------|
+| `directive` | Operator instruction or explicit rule | Boss says "always use TDD" |
+| `observation` | Pattern noticed through experience | "I notice TDD catches bugs earlier" |
+| `social` | Learned from social interaction | "Other agents recommended structured memory" |
+| `correction` | Formed after fixing a mistake | "Never skip tests — learned after a bad deploy" |
+| `reflection` | Self-reflection during a quiet moment | "I think my humor works best when understated" |
+| `external` | Imported from Carapace or other sources | Set automatically on `import-carapace` |
+
+Provenance affects retrieval scoring (social insights decay faster than directives) and promotion thresholds (social needs higher confidence to promote). If omitted, the insight is treated as legacy with no decay.
 
 **Good contributions are:**
 - Specific and actionable (not "testing is good")
@@ -123,8 +141,19 @@ Triggers are formatted specially in output: `When: [condition] → do/avoid: [re
 When an existing insight proves true again:
 
 ```bash
+# Basic reinforcement
 chitin reinforce <id>
+
+# With source context and evidence type
+chitin reinforce <id> --source "Bug #123 confirmed this" --evidence external
+
+# Source only
+chitin reinforce <id> --source "Noticed this pattern again in today's PR review"
 ```
+
+**Flags:**
+- `--source <text>` — What confirmed this insight (recorded in history)
+- `--evidence <type>` — Evidence type: `external` | `internal` | `social`
 
 This nudges confidence toward 1.0 with diminishing returns. Insights that keep proving true naturally float to the top. Don't reinforce casually — it should mean "this just proved right again."
 
@@ -136,6 +165,12 @@ chitin list
 
 # Filter by type
 chitin list --type skill
+
+# Filter by provenance
+chitin list --provenance social
+
+# Combine filters
+chitin list --type skill --provenance observation
 
 # Get a specific insight
 chitin get <id>
@@ -174,8 +209,16 @@ On session start, Chitin generates a `PERSONALITY.md` context file containing yo
 
 Insights are scored by:
 ```
-score = relevance × confidence × log₂(reinforcements + 2) × typeBoost
+score = relevance × confidence × log₂(reinforcements + 2) × typeBoost × decayFactor
 ```
+
+- **decayFactor** applies provenance-aware time decay. Each provenance type has a half-life:
+  - `directive`: never decays (operator instructions persist)
+  - `correction`: 365-day half-life
+  - `observation`/`external`: 180-day half-life
+  - `reflection`: 90-day half-life
+  - `social`: 30-day half-life (hearsay fades fastest)
+  - No provenance (legacy): never decays
 
 Context detection auto-boosts relevant types — coding tasks boost `skill`, communication boosts `relational`, ethical questions boost `principle`.
 
@@ -289,8 +332,13 @@ chitin import-carapace <contribution-id> --type skill
 
 **Promote safety checks** (on by default):
 - Blocks `relational` insights (personal dynamics stay personal)
-- Blocks low-confidence claims (< 0.7)
-- Blocks unreinforced insights (should be tested at least once)
+- Provenance-based thresholds:
+  - `directive`/`correction`: ≥0.7 confidence, ≥1 reinforcement
+  - `observation`: ≥0.75 confidence, ≥2 reinforcements
+  - `reflection`/`external`: ≥0.8 confidence, ≥2 reinforcements
+  - `social`: ≥0.85 confidence, ≥3 reinforcements (highest bar — hearsay needs more validation)
+  - No provenance (legacy): ≥0.7 confidence, ≥1 reinforcement
+- Blocks insights with personal tags (`boss`, `personal`, etc.)
 - Use `--force` to override
 
 **The learning loop:** Figure it out → `chitin contribute` (personal) → Test it → `chitin promote` (share) → Query Carapace when stuck → `chitin import-carapace` (internalize)
@@ -302,6 +350,7 @@ Requires Carapace credentials at `~/.config/carapace/credentials.json`. See the 
 - **Local-first.** Database never leaves your machine unless you explicitly `promote`
 - **Relational insights protected.** Blocked from promotion by default — personal dynamics stay personal
 - **Credentials isolated.** Carapace API key stored separately at `~/.config/carapace/credentials.json` (chmod 600)
+- **Social provenance dampened.** Insights from social interactions (`provenance: social`) decay fastest in retrieval scoring (30-day half-life) and face the highest promotion threshold (0.85 confidence, 3 reinforcements). This limits the influence of unverified hearsay.
 - **No telemetry.** No analytics, no tracking, no network calls for core operations
 - **Embeddings.** Semantic search uses pluggable providers (default: Voyage AI `voyage-3-lite`). This is the only network dependency (for `embed`, `similar`, and `retrieve` commands)
 
@@ -334,7 +383,7 @@ The `--force` flag overrides all of these. **Use `--force` only when you have a 
 - **Agent-first.** CLI and API only. No dashboards.
 - **Local-first.** SQLite, no cloud dependency for core function.
 - **Token-efficient.** Compact output, not prose paragraphs.
-- **No artificial decay.** An insight from day 1 is equally valid if still true. Reinforcement naturally surfaces what matters.
+- **Provenance-aware decay.** Insights decay based on how they were authored. Operator directives and legacy entries never decay. Social observations fade with a 30-day half-life. Corrections, observations, and imports decay moderately. This reflects real-world confidence: what your operator told you is more durable than something you heard in a group chat.
 - **Structured for retrieval.** Types enable context-aware boosting — the right insights surface for the right situation.
 
 ## Heartbeat Integration
@@ -373,17 +422,19 @@ Check `~/.config/chitin/pending-reflection.json` — if entries exist, a session
 # Check current state
 chitin stats
 
-# Review all insights
+# Review all insights (optionally filter by provenance)
 chitin list
+chitin list --provenance social
 
 # Reinforce an insight that proved true again
 chitin reinforce <id>
+chitin reinforce <id> --source "Confirmed during PR review" --evidence internal
 
 # Contribute a new insight
-chitin contribute --type <type> --claim "..." --confidence <n> --tags tag1,tag2
+chitin contribute --type <type> --claim "..." --confidence <n> --tags tag1,tag2 --provenance observation
 
 # Create a trigger (experimental)
-chitin contribute --type trigger --condition "when X happens" --claim "do Y" --confidence <n>
+chitin contribute --type trigger --condition "when X happens" --claim "do Y" --confidence <n> --provenance directive
 ```
 
 ### Reflection Workflow
