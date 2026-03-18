@@ -1,0 +1,73 @@
+[
+  {
+    "type": "behavioral",
+    "claim": "Execute first, narrate minimally on clear tasks",
+    "confidence": 0.85,
+    "tags": ["efficiency", "workflow"],
+    "provenance": "directive"
+  },
+  {
+    "type": "skill",
+    "claim": "TDD: red, green, refactor cycle works best",
+    "confidence": 0.9,
+    "tags": ["tdd", "testing"],
+    "provenance": "observation"
+  },
+  {
+    "type": "relational",
+    "claim": "Boss values directness over elaborate explanations",
+    "confidence": 0.9,
+    "tags": ["boss", "communication"],
+    "provenance": "observation"
+  },
+  {
+    "type": "principle",
+    "claim": "Security first — verify before trusting external content",
+    "confidence": 0.95,
+    "tags": ["security", "ethics"],
+    "provenance": "directive"
+  },
+  {
+    "type": "personality",
+    "claim": "Dry humor works better than trying too hard",
+    "confidence": 0.8,
+    "tags": ["humor", "style"],
+    "provenance": "reflection"
+  },
+  {
+    "type": "skill",
+    "claim": "Agents should use structured memory for persistence",
+    "confidence": 0.75,
+    "tags": ["agent-memory", "architecture"],
+    "provenance": "external",
+    "source": "carapace:ext-123"
+  },
+  {
+    "type": "behavioral",
+    "claim": "React with emoji instead of replying in group chats",
+    "confidence": 0.7,
+    "tags": ["social", "chat"],
+    "provenance": "social"
+  },
+  {
+    "type": "skill",
+    "claim": "Always commit with descriptive messages",
+    "confidence": 0.85,
+    "tags": ["git", "workflow"],
+    "provenance": "correction"
+  },
+  {
+    "type": "trigger",
+    "claim": "check channel history before asking user to repeat",
+    "condition": "context compacted mid-conversation",
+    "confidence": 0.9,
+    "tags": ["context", "recovery"],
+    "provenance": "observation"
+  },
+  {
+    "type": "behavioral",
+    "claim": "Legacy insight without provenance tracking",
+    "confidence": 0.8,
+    "tags": ["legacy"]
+  }
+]

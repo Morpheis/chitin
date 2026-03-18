@@ -61,7 +61,8 @@ chitin contribute \
   --type behavioral \
   --claim "On clear tasks, execute first, narrate minimally" \
   --confidence 0.85 \
-  --tags "boss,communication,efficiency"
+  --tags "boss,communication,efficiency" \
+  --provenance directive
 
 # Check current state
 chitin stats
@@ -80,10 +81,12 @@ You don't install Chitin — it installs into you. Your operator sets up the hoo
 # After learning something about a person
 chitin contribute --type relational \
   --claim "Boss values directness. Skip the preamble." \
-  --confidence 0.85 --tags boss,communication
+  --confidence 0.85 --tags boss,communication \
+  --provenance observation
 
-# When an insight proves true again
+# When an insight proves true again (with optional source tracking)
 chitin reinforce <id>
+chitin reinforce <id> --source "Bug #123 confirmed this" --evidence external
 
 # Find potential duplicates before contributing
 chitin similar "Boss prefers efficiency"
@@ -184,13 +187,17 @@ Triggers are formatted specially in output: `When: [condition] → do/avoid: [re
 
 ```bash
 # Add an insight (with conflict detection)
-chitin contribute --type behavioral --claim "..." --confidence 0.85
+chitin contribute --type behavioral --claim "..." --confidence 0.85 --provenance observation
 
 # Reinforce an insight (nudges confidence toward 1.0)
 chitin reinforce <id>
+chitin reinforce <id> --source "Saw it again today" --evidence internal
 
 # Get personality context for a session
 chitin retrieve --query "Help me fix this TypeScript build error"
+
+# List insights filtered by provenance
+chitin list --provenance social
 
 # Check current state
 chitin stats
@@ -202,12 +209,12 @@ chitin stats
 
 | Command | Description |
 |---------|-------------|
-| `contribute` | Add a new insight |
+| `contribute` | Add a new insight (`--provenance <type>` for authoring context) |
 | `get <id>` | Get a specific insight |
-| `update <id>` | Update an existing insight |
-| `reinforce <id>` | Bump reinforcement count + nudge confidence |
+| `update <id>` | Update an existing insight (including `--provenance`) |
+| `reinforce <id>` | Bump reinforcement count + nudge confidence (`--source`, `--evidence`) |
 | `archive <id>` | Remove an insight |
-| `list` | List insights with filters |
+| `list` | List insights with filters (`--provenance <type>` to filter) |
 | `stats` | Show insight counts and averages |
 
 ### Retrieval & Embeddings
@@ -239,7 +246,17 @@ chitin stats
 | `promote <id>` | Share a personal insight to Carapace (distributed knowledge base) |
 | `import-carapace <id>` | Import a Carapace contribution as a local insight |
 
-**Promote** maps Chitin fields to Carapace format (`context` → `applicability`, `tags` → `domainTags`) and includes safety checks — it blocks relational insights, low-confidence claims, and unreinforced insights by default. Use `--force` to override, `--domain-tags` to set Carapace-specific tags.
+**Promote** maps Chitin fields to Carapace format (`context` → `applicability`, `tags` → `domainTags`, `provenance` → domain tag `provenance:<type>`) and includes safety checks with provenance-aware thresholds:
+
+| Provenance | Min Confidence | Min Reinforcements |
+|------------|---------------|-------------------|
+| `directive`/`correction` | 0.7 | 1 |
+| `observation` | 0.75 | 2 |
+| `reflection`/`external` | 0.8 | 2 |
+| `social` | 0.85 | 3 |
+| None (legacy) | 0.7 | 1 |
+
+Relational insights are always blocked. Use `--force` to override, `--domain-tags` to set Carapace-specific tags.
 
 **Import** pulls a Carapace contribution into your local Chitin DB, mapping fields back (`applicability` → `context`, `domainTags` → `tags`). Sets `source: "carapace:<id>"` for provenance tracking and duplicate detection.
 
@@ -314,13 +331,23 @@ If no embeddings exist or the API key is missing, `retrieve` falls back to type-
 When retrieving insights for a session, each insight is scored:
 
 ```
-score = cosineSimilarity × confidence × log₂(reinforcementCount + 2) × typeBoost
+score = cosineSimilarity × confidence × log₂(reinforcementCount + 2) × typeBoost × decayFactor
 ```
 
 - **cosineSimilarity**: Embedding-based relevance to the query
 - **confidence**: 0.0–1.0, increases with reinforcement
 - **reinforcementCount**: How many times this insight has been confirmed
 - **typeBoost**: Context-dependent multiplier (coding tasks boost `skill`, communication boosts `relational`, etc.)
+- **decayFactor**: Provenance-aware time decay using exponential half-life:
+
+| Provenance | Half-Life | Rationale |
+|-----------|-----------|-----------|
+| `directive` | ∞ (never) | Operator instructions persist |
+| `correction` | 365 days | Lessons from mistakes are durable |
+| `observation`/`external` | 180 days | Empirical patterns need periodic validation |
+| `reflection` | 90 days | Self-reflections evolve faster |
+| `social` | 30 days | Hearsay fades fastest |
+| None (legacy) | ∞ (never) | Backward compatibility |
 
 ### Context Detection
 
@@ -382,8 +409,9 @@ chmod 600 ~/.config/carapace/credentials.json
 | Promoted insights | carapaceai.com (via `promote`) | Public to other agents |
 
 - The local database **never** leaves your machine unless you explicitly `promote` an insight
-- `promote` includes safety checks — relational insights and low-confidence claims are blocked by default
-- `import-carapace` pulls external data locally but treats it as **untrusted content** (sets `source` for provenance tracking)
+- `promote` includes provenance-aware safety checks — social-provenance insights face the highest bar (0.85 confidence, 3 reinforcements). Relational insights are always blocked.
+- `import-carapace` pulls external data locally, sets `provenance: 'external'` and `source: "carapace:<id>"` for tracking. External-provenance insights decay with a 180-day half-life.
+- **Social provenance dampened.** Insights from social interactions decay fastest in retrieval (30-day half-life) and need the most validation before promotion. This limits unverified hearsay influence.
 
 ### Relational Insights
 
@@ -410,7 +438,7 @@ SQLite database at `~/.config/chitin/insights.db`. Zero network dependencies for
 - **Agent-first, not human-first.** No dashboards. CLI and API only.
 - **Local-first.** SQLite, no cloud dependency for core function.
 - **Token-efficient.** Compact output format, not prose paragraphs.
-- **No artificial decay.** Agents don't "forget over time." An insight from day 1 is equally valid if it's still true. Reinforcement count naturally surfaces what matters.
+- **Provenance-aware decay.** Insights decay based on how they were authored. Operator directives and legacy entries never decay. Social observations fade with a 30-day half-life. This reflects real-world confidence: what your operator told you is more durable than something you heard in a group chat.
 - **Structured for retrieval.** Types enable differentiated boosting — the right insights surface for the right context.
 
 ## Development

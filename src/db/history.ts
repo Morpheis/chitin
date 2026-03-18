@@ -75,9 +75,21 @@ export class InsightHistory {
 
   /**
    * Record a reinforcement event (confidence change).
+   * @param reinforceSource - Optional source text describing why the insight was reinforced
    */
-  recordReinforce(insightId: string, oldConfidence: number, newConfidence: number, newCount: number): void {
+  recordReinforce(
+    insightId: string,
+    oldConfidence: number,
+    newConfidence: number,
+    newCount: number,
+    reinforceSource?: string,
+  ): void {
     const db = getDatabase();
+    // Combine count info with optional source text
+    const sourceField = reinforceSource
+      ? `reinforce:${newCount}|${reinforceSource}`
+      : `reinforce:${newCount}`;
+
     db.prepare(`
       INSERT INTO insight_history (insight_id, field, old_value, new_value, change_type, source)
       VALUES (?, ?, ?, ?, 'reinforce', ?)
@@ -86,7 +98,7 @@ export class InsightHistory {
       'confidence',
       String(oldConfidence),
       String(newConfidence),
-      `reinforce:${newCount}`,
+      sourceField,
     );
   }
 

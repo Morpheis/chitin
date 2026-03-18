@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { initDatabase, closeDatabase } from '../../src/db/schema.js';
+import { initDatabase, closeDatabase, getDatabase } from '../../src/db/schema.js';
 import { InsightRepository } from '../../src/db/repository.js';
 import { EmbeddingStore } from '../../src/db/embeddings.js';
 import { RetrievalEngine, type SessionContext } from '../../src/engine/retrieve.js';
-import type { InsightType } from '../../src/types.js';
+import type { InsightType, Provenance } from '../../src/types.js';
+import { DEFAULT_DECAY_CONFIG, type DecayConfig } from '../../src/engine/decay.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -205,6 +206,105 @@ describe('RetrievalEngine', () => {
       for (let i = 1; i < results.length; i++) {
         expect(results[i - 1].score).toBeGreaterThanOrEqual(results[i].score);
       }
+    });
+  });
+
+  describe('decay', () => {
+    let decayDbPath: string;
+    let decayRepo: InsightRepository;
+    let decayStore: EmbeddingStore;
+    let decayEngine: RetrievalEngine;
+
+    beforeEach(() => {
+      decayDbPath = tmpDbPath();
+      // Close the main test DB first, then init the decay DB
+      closeDatabase();
+      initDatabase(decayDbPath);
+      decayRepo = new InsightRepository();
+      decayStore = new EmbeddingStore();
+      decayEngine = new RetrievalEngine(decayRepo, decayStore);
+    });
+
+    afterEach(() => {
+      closeDatabase();
+      try { fs.unlinkSync(decayDbPath); } catch {}
+      try { fs.unlinkSync(decayDbPath + '-wal'); } catch {}
+      try { fs.unlinkSync(decayDbPath + '-shm'); } catch {}
+      // Re-init main DB for the parent afterEach
+      initDatabase(dbPath);
+    });
+
+    it('social-provenance insights score lower than directive-provenance at same similarity/confidence', () => {
+      const directiveInsight = decayRepo.contribute({
+        type: 'skill',
+        claim: 'TDD coding is essential for quality code',
+        confidence: 0.9,
+        tags: ['coding', 'tdd'],
+        provenance: 'directive',
+      });
+
+      const socialInsight = decayRepo.contribute({
+        type: 'skill',
+        claim: 'TDD programming coding is essential for quality code',
+        confidence: 0.9,
+        tags: ['coding', 'tdd'],
+        provenance: 'social',
+      });
+
+      // Backdate both to 60 days ago via raw SQL
+      const rawDb = getDatabase();
+      const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString();
+      rawDb.prepare('UPDATE insights SET created_at = ? WHERE id = ?').run(sixtyDaysAgo, directiveInsight.id);
+      rawDb.prepare('UPDATE insights SET created_at = ? WHERE id = ?').run(sixtyDaysAgo, socialInsight.id);
+
+      // Create embeddings
+      const directiveEmb = fakeEmbedder('TDD coding quality code');
+      const socialEmb = fakeEmbedder('TDD programming coding quality code');
+      decayStore.upsert(directiveInsight.id, directiveEmb);
+      decayStore.upsert(socialInsight.id, socialEmb);
+
+      const queryEmbedding = fakeEmbedder('TDD coding quality');
+      const results = decayEngine.retrieve(queryEmbedding, { maxResults: 10 });
+
+      const directiveResult = results.find(r => r.insight.id === directiveInsight.id);
+      const socialResult = results.find(r => r.insight.id === socialInsight.id);
+
+      expect(directiveResult).toBeTruthy();
+      expect(socialResult).toBeTruthy();
+
+      // Directive never decays, social at 60 days = 2 half-lives → factor ≈ 0.25
+      // Directive score should be significantly higher
+      expect(directiveResult!.score).toBeGreaterThan(socialResult!.score);
+    });
+
+    it('legacy insights (no provenance) get no decay penalty', () => {
+      const legacyInsight = decayRepo.contribute({
+        type: 'skill',
+        claim: 'TDD coding patterns are important for code quality',
+        confidence: 0.9,
+        tags: ['coding', 'tdd'],
+        // No provenance — legacy
+      });
+
+      // Backdate to 200 days ago
+      const rawDb = getDatabase();
+      const twoHundredDaysAgo = new Date(Date.now() - 200 * 86400000).toISOString();
+      rawDb.prepare('UPDATE insights SET created_at = ? WHERE id = ?').run(twoHundredDaysAgo, legacyInsight.id);
+
+      const emb = fakeEmbedder('TDD coding patterns code quality');
+      decayStore.upsert(legacyInsight.id, emb);
+
+      const queryEmbedding = fakeEmbedder('TDD coding patterns');
+      const results = decayEngine.retrieve(queryEmbedding, { maxResults: 10 });
+
+      const legacyResult = results.find(r => r.insight.id === legacyInsight.id);
+      expect(legacyResult).toBeTruthy();
+
+      // Legacy insight should have full score (no decay)
+      // Verify the score is what we'd expect without decay
+      const expectedReinforcement = Math.log2(legacyInsight.reinforcementCount + 2);
+      const expectedScoreWithoutDecay = legacyResult!.similarity * legacyInsight.confidence * expectedReinforcement;
+      expect(legacyResult!.score).toBeCloseTo(expectedScoreWithoutDecay, 4);
     });
   });
 });

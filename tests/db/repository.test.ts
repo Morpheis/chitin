@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, closeDatabase } from '../../src/db/schema.js';
 import { InsightRepository } from '../../src/db/repository.js';
-import type { ContributeInput, UpdateInput } from '../../src/types.js';
+import type { ContributeInput, UpdateInput, Provenance } from '../../src/types.js';
+import { PROVENANCE_TYPES } from '../../src/types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -461,6 +462,79 @@ describe('InsightRepository', () => {
       const stats = repo.stats();
       expect(stats.total).toBe(0);
       expect(stats.averageConfidence).toBe(0);
+    });
+  });
+
+  describe('provenance', () => {
+    it('stores provenance when contributing with each provenance type', () => {
+      for (const prov of PROVENANCE_TYPES) {
+        const insight = repo.contribute({
+          ...SAMPLE_INSIGHT,
+          claim: `Claim with ${prov} provenance`,
+          provenance: prov,
+        });
+        expect(insight.provenance).toBe(prov);
+
+        const fetched = repo.get(insight.id);
+        expect(fetched!.provenance).toBe(prov);
+      }
+    });
+
+    it('stores undefined provenance when not provided (backward compat)', () => {
+      const insight = repo.contribute({
+        type: 'behavioral',
+        claim: 'Legacy insight without provenance',
+        confidence: 0.8,
+      });
+      expect(insight.provenance).toBeUndefined();
+    });
+
+    it('updates provenance via update()', () => {
+      const insight = repo.contribute({
+        ...SAMPLE_INSIGHT,
+        provenance: 'observation',
+      });
+      expect(insight.provenance).toBe('observation');
+
+      const updated = repo.update(insight.id, { provenance: 'directive' });
+      expect(updated.provenance).toBe('directive');
+    });
+
+    it('filters by provenance in list()', () => {
+      repo.contribute({ ...SAMPLE_INSIGHT, claim: 'Directive claim', provenance: 'directive' });
+      repo.contribute({ ...SAMPLE_INSIGHT, claim: 'Social claim', provenance: 'social' });
+      repo.contribute({ ...SAMPLE_INSIGHT, claim: 'No provenance claim' });
+
+      const directives = repo.list({ provenance: 'directive' });
+      expect(directives).toHaveLength(1);
+      expect(directives[0].claim).toBe('Directive claim');
+
+      const social = repo.list({ provenance: 'social' });
+      expect(social).toHaveLength(1);
+      expect(social[0].claim).toBe('Social claim');
+    });
+
+    it('list without provenance filter returns all entries', () => {
+      repo.contribute({ ...SAMPLE_INSIGHT, claim: 'With provenance', provenance: 'observation' });
+      repo.contribute({ ...SAMPLE_INSIGHT, claim: 'Without provenance' });
+
+      const all = repo.list();
+      expect(all).toHaveLength(2);
+    });
+
+    it('reinforce with source and evidence records correctly', () => {
+      const insight = repo.contribute(SAMPLE_INSIGHT);
+      const reinforced = repo.reinforce(insight.id, {
+        source: 'Bug #123 confirmed this',
+        evidence: 'external',
+      });
+      expect(reinforced.reinforcementCount).toBe(1);
+    });
+
+    it('reinforce without source/evidence still works (backward compat)', () => {
+      const insight = repo.contribute(SAMPLE_INSIGHT);
+      const reinforced = repo.reinforce(insight.id);
+      expect(reinforced.reinforcementCount).toBe(1);
     });
   });
 });

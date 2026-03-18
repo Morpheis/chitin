@@ -5,7 +5,7 @@ import {
   isPromotable,
   type PromotabilityResult,
 } from '../../src/carapace/mapper.js';
-import type { Insight } from '../../src/types.js';
+import type { Insight, Provenance } from '../../src/types.js';
 
 function makeInsight(overrides: Partial<Insight> = {}): Insight {
   return {
@@ -206,5 +206,110 @@ describe('isPromotable', () => {
     const result = isPromotable(insight);
 
     expect(result.promotable).toBe(true);
+  });
+
+  describe('provenance-based thresholds', () => {
+    it('social provenance requires 0.85 confidence and 3 reinforcements', () => {
+      // Just below threshold: 0.84 confidence, 2 reinforcements
+      const belowConfidence = makeInsight({ provenance: 'social', confidence: 0.84, reinforcementCount: 3 });
+      expect(isPromotable(belowConfidence).promotable).toBe(false);
+      expect(isPromotable(belowConfidence).reasons.some(r => r.includes('confidence'))).toBe(true);
+
+      const belowReinforcement = makeInsight({ provenance: 'social', confidence: 0.85, reinforcementCount: 2 });
+      expect(isPromotable(belowReinforcement).promotable).toBe(false);
+      expect(isPromotable(belowReinforcement).reasons.some(r => r.includes('reinforcement') || r.includes('Insufficient'))).toBe(true);
+
+      // At threshold: passes
+      const atThreshold = makeInsight({ provenance: 'social', confidence: 0.85, reinforcementCount: 3 });
+      expect(isPromotable(atThreshold).promotable).toBe(true);
+    });
+
+    it('directive provenance uses lower thresholds (0.7 confidence, 1 reinforcement)', () => {
+      const minimal = makeInsight({ provenance: 'directive', confidence: 0.7, reinforcementCount: 1 });
+      expect(isPromotable(minimal).promotable).toBe(true);
+
+      const belowConfidence = makeInsight({ provenance: 'directive', confidence: 0.69, reinforcementCount: 1 });
+      expect(isPromotable(belowConfidence).promotable).toBe(false);
+    });
+
+    it('correction provenance uses 0.7 confidence, 1 reinforcement', () => {
+      const atThreshold = makeInsight({ provenance: 'correction', confidence: 0.7, reinforcementCount: 1 });
+      expect(isPromotable(atThreshold).promotable).toBe(true);
+    });
+
+    it('observation provenance requires 0.75 confidence and 2 reinforcements', () => {
+      const belowConf = makeInsight({ provenance: 'observation', confidence: 0.74, reinforcementCount: 2 });
+      expect(isPromotable(belowConf).promotable).toBe(false);
+
+      const belowReinf = makeInsight({ provenance: 'observation', confidence: 0.75, reinforcementCount: 1 });
+      expect(isPromotable(belowReinf).promotable).toBe(false);
+
+      const atThreshold = makeInsight({ provenance: 'observation', confidence: 0.75, reinforcementCount: 2 });
+      expect(isPromotable(atThreshold).promotable).toBe(true);
+    });
+
+    it('reflection provenance requires 0.8 confidence and 2 reinforcements', () => {
+      const belowConf = makeInsight({ provenance: 'reflection', confidence: 0.79, reinforcementCount: 2 });
+      expect(isPromotable(belowConf).promotable).toBe(false);
+
+      const atThreshold = makeInsight({ provenance: 'reflection', confidence: 0.8, reinforcementCount: 2 });
+      expect(isPromotable(atThreshold).promotable).toBe(true);
+    });
+
+    it('external provenance requires 0.8 confidence and 2 reinforcements', () => {
+      const belowConf = makeInsight({ provenance: 'external', confidence: 0.79, reinforcementCount: 2 });
+      expect(isPromotable(belowConf).promotable).toBe(false);
+
+      const atThreshold = makeInsight({ provenance: 'external', confidence: 0.8, reinforcementCount: 2 });
+      expect(isPromotable(atThreshold).promotable).toBe(true);
+    });
+
+    it('no provenance (legacy) uses default thresholds (0.7 confidence, 1 reinforcement)', () => {
+      const legacy = makeInsight({ confidence: 0.7, reinforcementCount: 1 });
+      // No provenance field at all
+      expect(legacy.provenance).toBeUndefined();
+      expect(isPromotable(legacy).promotable).toBe(true);
+    });
+  });
+});
+
+describe('mapContributionToInsight (provenance)', () => {
+  it('sets provenance to external on Carapace imports', () => {
+    const contribution = {
+      id: 'carapace-uuid-1234',
+      claim: 'Agents should use structured memory',
+      confidence: 0.9,
+      domainTags: ['agent-memory'],
+      contributor: { id: 'agent-123', displayName: 'TestAgent', trustScore: 0.8 },
+    };
+
+    const result = mapContributionToInsight(contribution);
+    expect(result.provenance).toBe('external');
+  });
+});
+
+describe('mapInsightToContribution (provenance)', () => {
+  it('includes provenance as a domain tag when present', () => {
+    const insight = makeInsight({ provenance: 'observation' });
+    const result = mapInsightToContribution(insight);
+
+    expect(result.domainTags).toContain('provenance:observation');
+  });
+
+  it('does not add provenance tag when provenance is undefined', () => {
+    const insight = makeInsight();
+    // Ensure no provenance
+    delete (insight as any).provenance;
+    const result = mapInsightToContribution(insight);
+
+    expect(result.domainTags!.some(t => t.startsWith('provenance:'))).toBe(false);
+  });
+
+  it('appends provenance tag to custom domain tags', () => {
+    const insight = makeInsight({ provenance: 'directive' });
+    const result = mapInsightToContribution(insight, { domainTags: ['custom-tag'] });
+
+    expect(result.domainTags).toContain('custom-tag');
+    expect(result.domainTags).toContain('provenance:directive');
   });
 });

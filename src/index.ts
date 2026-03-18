@@ -9,7 +9,8 @@ import { RetrievalEngine } from './engine/retrieve.js';
 import { InsightHistory } from './db/history.js';
 import { marshal, estimateTokens } from './engine/marshal.js';
 import { detectContext } from './engine/context-detect.js';
-import type { InsightType, INSIGHT_TYPES } from './types.js';
+import type { InsightType, Provenance, INSIGHT_TYPES } from './types.js';
+import { PROVENANCE_TYPES } from './types.js';
 import { loadEmbeddingConfig } from './engine/embeddings/config.js';
 import { createProvider } from './engine/embeddings/factory.js';
 import { loadCarapaceConfig } from './carapace/config.js';
@@ -61,6 +62,7 @@ program
   .requiredOption('--confidence <number>', 'Confidence level 0.0-1.0')
   .option('--tags <tags>', 'Comma-separated tags')
   .option('--source <text>', 'What experience led to this')
+  .option('--provenance <type>', 'How insight was authored: directive | observation | social | correction | reflection | external')
   .option('--condition <text>', 'Trigger condition: the event/situation that fires this trigger')
   .option('--avoid', 'Mark this as a behavior to avoid (for triggers)')
   .option('--json', 'Input from JSON stdin')
@@ -71,6 +73,12 @@ program
     const { repo } = getDb(dbPath);
 
     try {
+      // Validate provenance if provided
+      if (opts.provenance && !(PROVENANCE_TYPES as readonly string[]).includes(opts.provenance)) {
+        console.error(`Invalid provenance: ${opts.provenance}. Must be one of: ${PROVENANCE_TYPES.join(', ')}`);
+        process.exit(1);
+      }
+
       const input = opts.json
         ? JSON.parse(fs.readFileSync('/dev/stdin', 'utf-8'))
         : {
@@ -82,6 +90,7 @@ program
             confidence: parseFloat(opts.confidence),
             tags: opts.tags ? opts.tags.split(',').map((t: string) => t.trim()) : [],
             source: opts.source,
+            provenance: opts.provenance as Provenance | undefined,
             condition: opts.condition,
             avoid: !!opts.avoid,
           };
@@ -104,7 +113,8 @@ program
       } else {
         console.log(`✓ Contributed ${result.insight.type} insight: ${result.insight.id}`);
         console.log(`  "${result.insight.claim}"`);
-        console.log(`  confidence: ${result.insight.confidence} | tags: ${result.insight.tags.join(', ') || '(none)'}`);
+        const provenanceLabel = result.insight.provenance ? ` | provenance: ${result.insight.provenance}` : '';
+        console.log(`  confidence: ${result.insight.confidence} | tags: ${result.insight.tags.join(', ') || '(none)'}${provenanceLabel}`);
 
         if (result.conflicts.length > 0) {
           console.log('');
@@ -154,6 +164,7 @@ program
         if (insight.limitations) console.log(`  Limitations: ${insight.limitations}`);
         console.log(`  Confidence: ${insight.confidence} | Reinforced: ${insight.reinforcementCount}x`);
         console.log(`  Tags: ${insight.tags.join(', ') || '(none)'}`);
+        if (insight.provenance) console.log(`  Provenance: ${insight.provenance}`);
         console.log(`  ID: ${insight.id}`);
       }
     } finally {
@@ -172,6 +183,7 @@ program
   .option('--confidence <number>', 'Updated confidence')
   .option('--tags <tags>', 'Updated comma-separated tags')
   .option('--source <text>', 'Updated source')
+  .option('--provenance <type>', 'Updated provenance: directive | observation | social | correction | reflection | external')
   .option('--format <fmt>', 'Output format: json | human', 'human')
   .action((id, opts) => {
     const dbPath = program.opts().db;
@@ -186,6 +198,7 @@ program
       if (opts.confidence) updates.confidence = parseFloat(opts.confidence);
       if (opts.tags) updates.tags = opts.tags.split(',').map((t: string) => t.trim());
       if (opts.source) updates.source = opts.source;
+      if (opts.provenance) updates.provenance = opts.provenance;
 
       const insight = repo.update(id, updates);
 
@@ -204,14 +217,21 @@ program
 program
   .command('reinforce <id>')
   .description('Bump reinforcement count for an insight')
-  .action((id) => {
+  .option('--source <text>', 'What confirmed this insight (e.g., "Bug #123 confirmed this")')
+  .option('--evidence <type>', 'Evidence type: external | internal | social')
+  .action((id, opts) => {
     const dbPath = program.opts().db;
     const { repo } = getDb(dbPath);
 
     try {
-      const insight = repo.reinforce(id);
+      const insight = repo.reinforce(id, {
+        source: opts.source,
+        evidence: opts.evidence,
+      });
       console.log(`✓ Reinforced: ${insight.claim}`);
       console.log(`  Count: ${insight.reinforcementCount}`);
+      if (opts.source) console.log(`  Source: ${opts.source}`);
+      if (opts.evidence) console.log(`  Evidence: ${opts.evidence}`);
     } finally {
       closeDatabase();
     }
@@ -239,6 +259,7 @@ program
   .description('List insights with optional filters')
   .option('--type <types>', 'Filter by type (comma-separated)')
   .option('--tags <tags>', 'Filter by tags (comma-separated)')
+  .option('--provenance <type>', 'Filter by provenance: directive | observation | social | correction | reflection | external')
   .option('--min-confidence <number>', 'Minimum confidence threshold')
   .option('--format <fmt>', 'Output format: json | human', 'human')
   .action((opts) => {
@@ -249,6 +270,7 @@ program
       const options: Record<string, unknown> = {};
       if (opts.type) options.types = opts.type.split(',').map((t: string) => t.trim());
       if (opts.tags) options.tags = opts.tags.split(',').map((t: string) => t.trim());
+      if (opts.provenance) options.provenance = opts.provenance;
       if (opts.minConfidence) options.minConfidence = parseFloat(opts.minConfidence);
 
       const insights = repo.list(options as any);
@@ -263,7 +285,8 @@ program
         for (const i of insights) {
           const tags = i.tags.length > 0 ? ` [${i.tags.join(', ')}]` : '';
           const reinforced = i.reinforcementCount > 0 ? ` (${i.reinforcementCount}×)` : '';
-          console.log(`  [${i.type}] ${i.claim}${tags}${reinforced}`);
+          const prov = i.provenance ? ` (provenance: ${i.provenance})` : '';
+          console.log(`  [${i.type}] ${i.claim}${tags}${reinforced}${prov}`);
           console.log(`    confidence: ${i.confidence} | id: ${i.id}`);
         }
         console.log(`\n${insights.length} insight(s)`);

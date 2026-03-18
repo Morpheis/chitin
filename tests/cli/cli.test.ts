@@ -203,4 +203,138 @@ describe('CLI', () => {
     expect(result).toContain('Total: 0');
     try { fs.unlinkSync(freshDb); } catch {}
   });
+
+  describe('provenance', () => {
+    it('contribute with --provenance stores the value', () => {
+      const result = run(
+        'contribute --type skill --claim "Learned from directive" --confidence 0.9 --provenance directive --format json',
+        dbPath
+      );
+      const parsed = JSON.parse(result);
+      expect(parsed.insight.provenance).toBe('directive');
+
+      // Verify via get
+      const fetched = JSON.parse(run(`get ${parsed.insight.id} --format json`, dbPath));
+      expect(fetched.provenance).toBe('directive');
+    });
+
+    it('contribute with each valid provenance type succeeds', () => {
+      const types = ['directive', 'observation', 'social', 'correction', 'reflection', 'external'];
+      for (const prov of types) {
+        const result = run(
+          `contribute --type skill --claim "Claim with ${prov}" --confidence 0.8 --provenance ${prov} --format json`,
+          dbPath
+        );
+        const parsed = JSON.parse(result);
+        expect(parsed.insight.provenance).toBe(prov);
+      }
+    });
+
+    it('contribute with invalid --provenance value is rejected', () => {
+      try {
+        run(
+          'contribute --type skill --claim "Bad provenance" --confidence 0.8 --provenance nonsense',
+          dbPath
+        );
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (e: any) {
+        expect(e.stderr || e.message).toContain('Invalid provenance');
+      }
+    });
+
+    it('contribute without --provenance has no provenance (backward compat)', () => {
+      const result = run(
+        'contribute --type behavioral --claim "No provenance" --confidence 0.8 --format json',
+        dbPath
+      );
+      const parsed = JSON.parse(result);
+      expect(parsed.insight.provenance).toBeUndefined();
+    });
+
+    it('list with --provenance filter returns only matching entries', () => {
+      run('contribute --type skill --claim "Social claim" --confidence 0.8 --provenance social', dbPath);
+      run('contribute --type skill --claim "Directive claim" --confidence 0.9 --provenance directive', dbPath);
+      run('contribute --type skill --claim "No provenance claim" --confidence 0.7', dbPath);
+
+      const socialList = run('list --provenance social', dbPath);
+      expect(socialList).toContain('Social claim');
+      expect(socialList).not.toContain('Directive claim');
+      expect(socialList).not.toContain('No provenance claim');
+      expect(socialList).toContain('1 insight(s)');
+    });
+
+    it('list shows provenance label in human output', () => {
+      run('contribute --type skill --claim "Observable pattern" --confidence 0.8 --provenance observation', dbPath);
+
+      const result = run('list', dbPath);
+      expect(result).toContain('provenance: observation');
+    });
+
+    it('get shows provenance in human output', () => {
+      const created = JSON.parse(run(
+        'contribute --type skill --claim "Reflection insight" --confidence 0.8 --provenance reflection --format json',
+        dbPath
+      )).insight;
+
+      const result = run(`get ${created.id}`, dbPath);
+      expect(result).toContain('Provenance: reflection');
+    });
+
+    it('update with --provenance changes the value', () => {
+      const created = JSON.parse(run(
+        'contribute --type skill --claim "Mutable provenance" --confidence 0.8 --provenance social --format json',
+        dbPath
+      )).insight;
+
+      run(`update ${created.id} --provenance directive`, dbPath);
+
+      const fetched = JSON.parse(run(`get ${created.id} --format json`, dbPath));
+      expect(fetched.provenance).toBe('directive');
+    });
+  });
+
+  describe('reinforce with source tracking', () => {
+    it('reinforce with --source and --evidence succeeds', () => {
+      const created = JSON.parse(run(
+        'contribute --type skill --claim "TDD works" --confidence 0.9 --format json',
+        dbPath
+      )).insight;
+
+      const result = run(
+        `reinforce ${created.id} --source "Bug #123 confirmed this" --evidence external`,
+        dbPath
+      );
+
+      expect(result).toContain('Reinforced');
+      expect(result).toContain('Source: Bug #123 confirmed this');
+      expect(result).toContain('Evidence: external');
+    });
+
+    it('reinforce with --source only succeeds', () => {
+      const created = JSON.parse(run(
+        'contribute --type skill --claim "Pattern holds" --confidence 0.8 --format json',
+        dbPath
+      )).insight;
+
+      const result = run(
+        `reinforce ${created.id} --source "Noticed it again today"`,
+        dbPath
+      );
+
+      expect(result).toContain('Reinforced');
+      expect(result).toContain('Source: Noticed it again today');
+    });
+
+    it('reinforce without source/evidence still works', () => {
+      const created = JSON.parse(run(
+        'contribute --type skill --claim "Still true" --confidence 0.8 --format json',
+        dbPath
+      )).insight;
+
+      const result = run(`reinforce ${created.id}`, dbPath);
+      expect(result).toContain('Reinforced');
+      expect(result).not.toContain('Source:');
+    });
+  });
 });

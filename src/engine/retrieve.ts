@@ -1,12 +1,14 @@
 import type { Insight, InsightType } from '../types.js';
 import type { InsightRepository } from '../db/repository.js';
 import type { EmbeddingStore } from '../db/embeddings.js';
+import { computeDecayFactor, type DecayConfig } from './decay.js';
 
 export interface RetrieveOptions {
   maxResults?: number;
   minConfidence?: number;
   types?: InsightType[];
   typeBoosts?: Partial<Record<InsightType, number>>;
+  decayConfig?: DecayConfig;
 }
 
 export interface ScoredInsight {
@@ -35,10 +37,13 @@ export class RetrievalEngine {
    * Retrieve relevant insights for a given query embedding.
    * 
    * Scoring formula:
-   *   score = cosineSimilarity × confidence × log2(reinforcementCount + 2) × typeBoost
+   *   score = cosineSimilarity × confidence × log₂(reinforcements + 2) × typeBoost × decayFactor
    * 
    * The +2 in the log avoids log(1)=0 for unreinforced insights while still
    * giving a meaningful boost to frequently-confirmed insights.
+   * 
+   * decayFactor applies provenance-aware time decay: social observations decay
+   * quickly, directives never decay, legacy entries (no provenance) never decay.
    */
   retrieve(queryEmbedding: Float32Array, options: RetrieveOptions = {}): ScoredInsight[] {
     const {
@@ -46,6 +51,7 @@ export class RetrievalEngine {
       minConfidence,
       types,
       typeBoosts = {},
+      decayConfig,
     } = options;
 
     // Get all embeddings and compute similarities
@@ -67,8 +73,9 @@ export class RetrievalEngine {
       // Compute composite score
       const reinforcementFactor = Math.log2(insight.reinforcementCount + 2);
       const typeBoost = typeBoosts[insight.type] ?? 1.0;
+      const decayFactor = computeDecayFactor(insight.createdAt, insight.provenance, decayConfig);
 
-      const score = similarity * insight.confidence * reinforcementFactor * typeBoost;
+      const score = similarity * insight.confidence * reinforcementFactor * typeBoost * decayFactor;
 
       scored.push({ insight, similarity, score });
     }
