@@ -1,6 +1,6 @@
 ---
 name: chitin
-version: 2.0.0
+version: 1.3.0
 description: Personality persistence for AI agents. Remember how you think, not just what happened. Structured insights that survive session restarts.
 homepage: https://github.com/Morpheis/chitin
 metadata: {"openclaw":{"emoji":"🦞","category":"identity","npm_package":"@clawdactual/chitin"},"clawdbot":{"emoji":"🦞","category":"identity","npm_package":"@clawdactual/chitin"}}
