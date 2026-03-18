@@ -157,14 +157,15 @@ Triggers are an experimental feature for installing **condition → response ref
 chitin contribute --type trigger \
   --condition "context compacted mid-conversation, lost thread of discussion" \
   --claim "check channel history via message tool before asking user to repeat" \
-  --confidence 0.9 --tags context,chat,recovery
+  --confidence 0.9 --tags context,chat,recovery \
+  --provenance observation
 
 # Create an avoidance trigger (DON'T do something when tempted)
 chitin contribute --type trigger \
   --condition "tempted to open response with filler praise like 'Great question!'" \
   --claim "skip it, just answer directly" \
   --confidence 0.95 --tags communication,style \
-  --avoid
+  --avoid --provenance reflection
 ```
 
 **Trigger-specific fields:**
@@ -379,7 +380,8 @@ Output is marshaled to fit within a token budget (default 2000). At ~2,500 token
 When contributing, Chitin scans existing insights for semantic tension:
 
 ```
-$ chitin contribute --type relational --claim "Boss prefers verbose explanations"
+$ chitin contribute --type relational --claim "Boss prefers verbose explanations" \
+    --confidence 0.7 --provenance observation
 
 ⚠ 1 potential conflict(s) detected:
   [relational] "Boss values directness and efficiency..."
