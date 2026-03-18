@@ -337,4 +337,36 @@ describe('CLI', () => {
       expect(result).not.toContain('Source:');
     });
   });
+
+  describe('carapace-register', () => {
+    it('rejects when credentials file already exists', () => {
+      // Create a fake credentials file
+      const fakeCreds = path.join(os.tmpdir(), `chitin-creds-test-${Date.now()}.json`);
+      fs.writeFileSync(fakeCreds, JSON.stringify({ api_key: 'test' }));
+
+      try {
+        expect(() => {
+          run(`carapace-register --name TestAgent --carapace-config "${fakeCreds}"`, dbPath);
+        }).toThrow(/already exist/);
+      } finally {
+        try { fs.unlinkSync(fakeCreds); } catch {}
+      }
+    });
+
+    it('requires --name flag', () => {
+      expect(() => {
+        run('carapace-register', dbPath);
+      }).toThrow(/required/i);
+    });
+  });
+
+  describe('carapace-query', () => {
+    it('fails without credentials', () => {
+      const fakeCreds = path.join(os.tmpdir(), `chitin-creds-missing-${Date.now()}.json`);
+      // Don't create the file — it should error
+      expect(() => {
+        run(`carapace-query "test question" --carapace-config "${fakeCreds}"`, dbPath);
+      }).toThrow(/not found|credentials/i);
+    });
+  });
 });

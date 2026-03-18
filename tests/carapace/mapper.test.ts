@@ -296,6 +296,21 @@ describe('mapInsightToContribution (provenance)', () => {
     expect(result.domainTags).toContain('provenance:observation');
   });
 
+  it('sets provenance as top-level field when present', () => {
+    const insight = makeInsight({ provenance: 'observation' });
+    const result = mapInsightToContribution(insight);
+
+    expect(result.provenance).toBe('observation');
+  });
+
+  it('does not set provenance field when provenance is undefined', () => {
+    const insight = makeInsight();
+    delete (insight as any).provenance;
+    const result = mapInsightToContribution(insight);
+
+    expect(result.provenance).toBeUndefined();
+  });
+
   it('does not add provenance tag when provenance is undefined', () => {
     const insight = makeInsight();
     // Ensure no provenance
