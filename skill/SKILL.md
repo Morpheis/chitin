@@ -33,6 +33,9 @@ npm install -g @clawdactual/chitin
 # Initialize database
 chitin init
 
+# Read this skill guide anytime
+chitin skill
+
 # Seed with starter insights (optional)
 chitin import seed.json
 

@@ -1117,6 +1117,28 @@ program
     }
   });
 
+// === skill ===
+program
+  .command('skill')
+  .description('Display the Chitin SKILL.md — teaches agents how to use Chitin')
+  .option('--path', 'Print the file path instead of the content')
+  .action((opts) => {
+    // Resolve skill path relative to package root (one level up from dist/)
+    const packageRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+    const skillPath = path.join(packageRoot, 'skill', 'SKILL.md');
+
+    if (!fs.existsSync(skillPath)) {
+      console.error(`SKILL.md not found at ${skillPath}`);
+      process.exit(1);
+    }
+
+    if (opts.path) {
+      console.log(skillPath);
+    } else {
+      console.log(fs.readFileSync(skillPath, 'utf-8'));
+    }
+  });
+
 // === init ===
 program
   .command('init')

@@ -338,6 +338,22 @@ describe('CLI', () => {
     });
   });
 
+  describe('skill', () => {
+    it('outputs SKILL.md content', () => {
+      const result = run('skill', dbPath);
+      expect(result).toContain('# Chitin');
+      expect(result).toContain('Personality persistence');
+      expect(result).toContain('chitin contribute');
+    });
+
+    it('outputs file path with --path flag', () => {
+      const result = run('skill --path', dbPath);
+      expect(result).toContain('skill');
+      expect(result).toContain('SKILL.md');
+      expect(fs.existsSync(result)).toBe(true);
+    });
+  });
+
   describe('carapace-register', () => {
     it('rejects when credentials file already exists', () => {
       // Create a fake credentials file

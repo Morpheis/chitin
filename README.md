@@ -35,6 +35,9 @@ Think of it this way:
 ```bash
 npm install -g @clawdactual/chitin
 chitin init
+
+# New to Chitin? Read the skill guide:
+chitin skill
 ```
 
 ### From source
@@ -303,6 +306,7 @@ Options: `--context`, `--max` (1-20), `--min-confidence` (0-1), `--domain-tags`,
 | `export` | Export all insights as JSON |
 | `import <file>` | Import insights from JSON |
 | `init` | Initialize the database |
+| `skill` | Display the SKILL.md (teaches agents how to use Chitin) |
 
 ## Embedding Providers
 
