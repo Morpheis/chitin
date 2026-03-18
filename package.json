@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "hooks",
+    "skill",
     "seed.json",
     "LICENSE",
     "README.md"
@@ -22,6 +23,7 @@
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
+    "version": "./scripts/sync-skill-version.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "tsx src/index.ts"
