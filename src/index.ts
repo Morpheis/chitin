@@ -993,6 +993,130 @@ program
     }
   });
 
+// === carapace-query ===
+program
+  .command('carapace-query <question>')
+  .description('Query the Carapace shared knowledge base for insights from other agents')
+  .option('--context <text>', 'Your specific situation for more relevant results')
+  .option('--max <number>', 'Maximum results (1-20)', '5')
+  .option('--min-confidence <number>', 'Minimum confidence filter (0-1)')
+  .option('--domain-tags <tags>', 'Filter by domain tags (comma-separated)')
+  .option('--expand', 'Enable ideonomic query expansion')
+  .option('--search-mode <mode>', 'Search mode: semantic | hybrid', 'hybrid')
+  .option('--carapace-config <path>', 'Path to Carapace credentials JSON')
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action(async (question, opts) => {
+    try {
+      const carapaceConfig = loadCarapaceConfig(opts.carapaceConfig);
+      const client = new CarapaceClient({ apiKey: carapaceConfig.apiKey });
+
+      const params: Record<string, unknown> = {
+        question,
+        maxResults: parseInt(opts.max),
+        searchMode: opts.searchMode,
+      };
+      if (opts.context) params.context = opts.context;
+      if (opts.minConfidence) params.minConfidence = parseFloat(opts.minConfidence);
+      if (opts.domainTags) params.domainTags = opts.domainTags.split(',').map((t: string) => t.trim());
+      if (opts.expand) params.expand = true;
+
+      const response = await client.query(params as any);
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify(response, null, 2));
+        return;
+      }
+
+      if (!response.results || response.results.length === 0) {
+        console.log('No results found.');
+        return;
+      }
+
+      console.log(`Found ${response.results.length} insight(s) (${response.totalMatches} total matches):\n`);
+      for (const r of response.results) {
+        const trust = r.contributor?.trustScore != null ? ` | trust: ${r.contributor.trustScore.toFixed(2)}` : '';
+        const tags = r.domainTags?.length > 0 ? ` [${r.domainTags.join(', ')}]` : '';
+        console.log(`  "${r.claim}"`);
+        console.log(`    by ${r.contributor?.displayName ?? 'unknown'} | confidence: ${r.confidence}${trust}${tags}`);
+        if (r.reasoning) console.log(`    reasoning: ${r.reasoning.slice(0, 150)}${r.reasoning.length > 150 ? '...' : ''}`);
+        if (r.applicability) console.log(`    applies: ${r.applicability.slice(0, 150)}${r.applicability.length > 150 ? '...' : ''}`);
+        console.log(`    id: ${r.id}`);
+        console.log('');
+      }
+
+      if (response.relatedDomains?.length > 0) {
+        console.log(`Related domains: ${response.relatedDomains.join(', ')}`);
+      }
+    } catch (e) {
+      if (e instanceof CarapaceError) {
+        console.error(`Carapace error: ${e.message} (${e.code})`);
+        process.exit(1);
+      }
+      throw e;
+    }
+  });
+
+// === carapace-register ===
+program
+  .command('carapace-register')
+  .description('Register a new agent with Carapace and save credentials locally')
+  .requiredOption('--name <name>', 'Agent display name')
+  .option('--description <text>', 'Agent description')
+  .option('--carapace-config <path>', 'Path to save credentials', path.join(os.homedir(), '.config', 'carapace', 'credentials.json'))
+  .option('--format <fmt>', 'Output format: json | human', 'human')
+  .action(async (opts) => {
+    const configPath = opts.carapaceConfig;
+
+    // Check if credentials already exist
+    if (fs.existsSync(configPath)) {
+      console.error(`Credentials already exist at ${configPath}`);
+      console.error('Delete the file first if you want to re-register.');
+      process.exit(1);
+    }
+
+    try {
+      const result = await CarapaceClient.register({
+        displayName: opts.name,
+        description: opts.description,
+      });
+
+      // Save credentials
+      const dir = path.dirname(configPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const creds = {
+        api_key: result.apiKey,
+        agent_id: result.id,
+        display_name: result.displayName,
+        registered_at: new Date().toISOString(),
+      };
+      fs.writeFileSync(configPath, JSON.stringify(creds, null, 2));
+      fs.chmodSync(configPath, 0o600);
+
+      if (opts.format === 'json') {
+        console.log(JSON.stringify({ ...result, credentialsPath: configPath }, null, 2));
+      } else {
+        console.log(`✓ Registered agent: ${result.displayName}`);
+        console.log(`  Agent ID: ${result.id}`);
+        console.log(`  Credentials saved to: ${configPath}`);
+        console.log('');
+        console.log('  ⚠ Your API key is stored in the credentials file.');
+        console.log('  It is shown only once by the server — keep the file safe.');
+        console.log('');
+        console.log('  Next steps:');
+        console.log('    chitin carapace-query "your question"');
+        console.log('    chitin promote <insight-id>');
+      }
+    } catch (e) {
+      if (e instanceof CarapaceError) {
+        console.error(`Registration failed: ${e.message} (${e.code})`);
+        process.exit(1);
+      }
+      throw e;
+    }
+  });
+
 // === init ===
 program
   .command('init')

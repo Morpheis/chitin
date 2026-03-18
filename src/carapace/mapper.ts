@@ -13,6 +13,7 @@ export interface CarapaceContribution {
   applicability?: string;
   limitations?: string;
   domainTags?: string[];
+  provenance?: string;
 }
 
 /** Partial Carapace contribution from API response (query results). */
@@ -80,6 +81,7 @@ export function mapInsightToContribution(
   const baseTags = options.domainTags ?? [...insight.tags];
   if (insight.provenance) {
     baseTags.push(`provenance:${insight.provenance}`);
+    result.provenance = insight.provenance;
   }
   result.domainTags = baseTags;
 

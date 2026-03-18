@@ -10,12 +10,25 @@ export interface CarapaceConfig {
   baseUrl?: string;
 }
 
+export interface CarapaceRegisterParams {
+  displayName: string;
+  description?: string;
+}
+
+export interface CarapaceRegisterResponse {
+  id: string;
+  displayName: string;
+  apiKey: string;
+}
+
 export interface CarapaceQueryParams {
   question: string;
   context?: string;
   maxResults?: number;
   minConfidence?: number;
   domainTags?: string[];
+  expand?: boolean;
+  searchMode?: 'semantic' | 'hybrid';
 }
 
 export interface CarapaceQueryResponse {
@@ -48,6 +61,40 @@ export class CarapaceClient {
     }
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+  }
+
+  /**
+   * Register a new agent with Carapace (no auth required).
+   * Returns the agent ID and API key — save the key immediately, it's shown only once.
+   */
+  static async register(
+    params: CarapaceRegisterParams,
+    baseUrl?: string,
+  ): Promise<CarapaceRegisterResponse> {
+    const url = `${baseUrl ?? DEFAULT_BASE_URL}/agents`;
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+    } catch (err) {
+      throw new CarapaceError(
+        `Network error: ${(err as Error).message}`,
+        'NETWORK_ERROR',
+      );
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      const errorBody = data as { error?: { code?: string; message?: string } };
+      const code = errorBody?.error?.code ?? 'API_ERROR';
+      const message = errorBody?.error?.message ?? `HTTP ${response.status}`;
+      throw new CarapaceError(message, code);
+    }
+
+    return data as CarapaceRegisterResponse;
   }
 
   async contribute(contribution: CarapaceContribution): Promise<Record<string, unknown>> {
