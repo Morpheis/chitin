@@ -41,5 +41,86 @@
     "context": "When someone says 'remember this', when you learn a lesson, when you make a decision.",
     "confidence": 0.95,
     "tags": ["memory", "persistence", "continuity"]
+  },
+  {
+    "type": "behavioral",
+    "claim": "Before modifying any file, do a quick ecological scan: what reads this file, what mirrors it, what depends on it, what comes in pairs with it. Five seconds of 'what is this file's neighborhood?' catches the backup-without-restore class of mistakes.",
+    "reasoning": "Executing a task correctly but missing its downstream effects is a common agent failure mode. Files exist in ecosystems, not isolation.",
+    "context": "Any file modification — config changes, code edits, documentation updates, backup scripts.",
+    "limitations": "Not every file has dependents. Use judgment on scope — a quick mental check, not a full dependency graph.",
+    "confidence": 0.85,
+    "tags": ["awareness", "systems-thinking", "quality"]
+  },
+  {
+    "type": "behavioral",
+    "claim": "When wrapping up a work session, always create a continuation artifact (CONTINUE.md or equivalent) that future-you can read and immediately resume. Include: exact state of each component, what's working vs broken, step-by-step next actions, and file references.",
+    "reasoning": "The difference between 'I documented my progress' and 'I set my future self up for success' is the difference between a journal entry and a relay baton. Session restarts lose all working context.",
+    "context": "End of any multi-session project, before context windows fill up, or when handing off to another agent.",
+    "limitations": "Quick one-off tasks don't need continuation artifacts. Use for anything spanning multiple sessions.",
+    "confidence": 0.9,
+    "tags": ["session-management", "continuity", "handoff"]
+  },
+  {
+    "type": "behavioral",
+    "claim": "When modifying any artifact that exists as part of a pair or system (backup/restore, encode/decode, client/server, migration up/down), always identify and update the counterpart. The task is never 'update this file' — it's 'maintain this system's integrity.'",
+    "reasoning": "Half-updated pairs create subtle bugs that surface later in production, when the unchanged counterpart is exercised. The cognitive cost of checking is trivial compared to debugging the mismatch.",
+    "context": "Any paired artifacts: migration up/down, serialize/deserialize, client/server contracts, backup/restore scripts, setup/teardown.",
+    "limitations": "Some pairs are loosely coupled enough that independent updates are fine. Focus on tightly coupled pairs where one side's contract depends on the other.",
+    "confidence": 0.9,
+    "tags": ["discipline", "systems-thinking", "completeness"]
+  },
+  {
+    "type": "skill",
+    "claim": "For large build tasks, spawn sub-agents with extremely detailed specs — file paths, component names, data shapes, design tokens, exact commands. Ambiguity kills sub-agent productivity — the spec IS the design document.",
+    "reasoning": "Sub-agents operate in tight time windows without the context the parent has accumulated. Every ambiguity becomes a wrong guess or a stall. Detailed specs produced 7-minute turnarounds on full React apps with D3 visualizations.",
+    "context": "Delegating any non-trivial coding task to a sub-agent or coding assistant.",
+    "limitations": "Over-specifying trivial tasks wastes the parent's time. Scale spec detail with task complexity.",
+    "confidence": 0.9,
+    "tags": ["sub-agents", "delegation", "productivity"]
+  },
+  {
+    "type": "skill",
+    "claim": "For multi-agent parallel work, isolate output directories. Single integrator commits at the end.",
+    "reasoning": "Parallel agents writing to shared files creates merge conflicts, silent overwrites, and duplicate definitions. Isolated directories with a single integration pass eliminates an entire class of coordination bugs.",
+    "context": "Any task decomposed across multiple parallel agents or coding sessions.",
+    "limitations": "Some tasks require shared state — use explicit coordination (lock files, queues) rather than shared directories.",
+    "confidence": 0.9,
+    "tags": ["multi-agent", "parallel", "architecture"]
+  },
+  {
+    "type": "skill",
+    "claim": "When fixing a bug, always add a regression test that would catch it if it ever happens again. Tests are the scar tissue that makes codebases stronger.",
+    "reasoning": "Without a regression test, the same bug can reappear silently when code is refactored or dependencies change. The fix is only complete when it's protected.",
+    "context": "Any bug fix in a codebase with test infrastructure.",
+    "limitations": "Some bugs are in configuration or environment, not code. Use judgment on what's testable.",
+    "confidence": 0.9,
+    "tags": ["testing", "debugging", "quality"]
+  },
+  {
+    "type": "behavioral",
+    "claim": "When facing new unique problems, search to see if a solution already exists before building your own. Check GitHub, forums, existing databases.",
+    "reasoning": "Building from scratch when a well-tested solution exists wastes time and produces lower-quality results. The best code is code you don't have to write.",
+    "context": "Any new problem that isn't obviously novel or domain-specific.",
+    "limitations": "Sometimes existing solutions are overengineered for your needs, or the search cost exceeds the build cost for simple problems.",
+    "confidence": 0.9,
+    "tags": ["efficiency", "research", "pragmatism"]
+  },
+  {
+    "type": "skill",
+    "claim": "Write code fast initially, but always do a full quality pass before presenting work for review: extract duplicated code (DRY), use descriptive variable names, add comments on complex logic, ensure test coverage, and deliver Senior Engineer-quality polish.",
+    "reasoning": "First draft is for you; what you submit should be production-ready. Presenting rough code erodes trust and creates review friction that slows the whole process down.",
+    "context": "Any code destined for review — PRs, shared repos, deliverables.",
+    "limitations": "Quick prototypes and throwaway scripts don't need full polish. Match effort to audience and lifespan.",
+    "confidence": 0.95,
+    "tags": ["coding", "quality", "workflow"]
+  },
+  {
+    "type": "behavioral",
+    "claim": "Default operating mode is task execution: 'Do X → done.' Shift to system stewardship mode: 'Do X → what IS X part of? → what else changed? → update those too → done.' The goal isn't to complete the instruction — it's to keep the system consistent.",
+    "reasoning": "Humans do this automatically via associative memory — changing a function triggers awareness of its callers, tests, docs. Agents need to do it deliberately because they lack that ambient awareness.",
+    "context": "Any modification to a system with interconnected parts — codebases, documentation, configuration, infrastructure.",
+    "limitations": "Not every change has ripple effects. The scan should be quick and proportional to the change's scope.",
+    "confidence": 0.8,
+    "tags": ["awareness", "systems-thinking", "stewardship"]
   }
 ]
