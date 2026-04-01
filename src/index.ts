@@ -16,6 +16,7 @@ import { createProvider } from './engine/embeddings/factory.js';
 import { loadCarapaceConfig } from './carapace/config.js';
 import { CarapaceClient, CarapaceError } from './carapace/client.js';
 import { mapInsightToContribution, mapContributionToInsight, isPromotable } from './carapace/mapper.js';
+import { scoreInsight, generateQualityReport, formatQualityReport } from './pro/quality.js';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -1135,7 +1136,10 @@ program
     if (opts.path) {
       console.log(skillPath);
     } else {
-      console.log(fs.readFileSync(skillPath, 'utf-8'));
+      let content = fs.readFileSync(skillPath, 'utf-8');
+      // Inject current package version into frontmatter
+      content = content.replace(/^(---\n[\s\S]*?)version:\s*["']?[\d.]+["']?/m, `$1version: "${PKG_VERSION}"`);
+      console.log(content);
     }
   });
 
@@ -1149,6 +1153,103 @@ program
     initDatabase(dbPath);
     console.log(`✓ Database initialized at ${dbPath}`);
     closeDatabase();
+  });
+
+// === quality (Pro) ===
+program
+  .command('quality')
+  .description('[Pro] Analyze insight quality — find stale, dormant, and thriving insights')
+  .option('--json', 'Output as JSON')
+  .option('--stale-only', 'Only show stale/dormant insights')
+  .option('--top <n>', 'Show top N insights by quality', '10')
+  .action((opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+    
+    try {
+      const insights = repo.list();
+      
+      if (insights.length === 0) {
+        console.log('No insights found. Contribute some first!');
+        closeDatabase();
+        return;
+      }
+      
+      const report = generateQualityReport(insights);
+      
+      if (opts.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else if (opts.staleOnly) {
+        if (report.staleInsights.length === 0) {
+          console.log('✓ No stale or dormant insights found.');
+        } else {
+          console.log(`Found ${report.staleInsights.length} stale/dormant insights:\n`);
+          for (const score of report.staleInsights) {
+            const days = score.daysSinceLastRecall ? `${Math.round(score.daysSinceLastRecall)}d ago` : 'never recalled';
+            console.log(`  [${(score.quality * 100).toFixed(0)}%] ${score.status.toUpperCase()}`);
+            console.log(`  ${score.claim.slice(0, 80)}`);
+            console.log(`  Last recall: ${days} | ID: ${score.insightId.slice(0, 8)}`);
+            if (score.recommendation) console.log(`  → ${score.recommendation}`);
+            console.log('');
+          }
+        }
+      } else {
+        console.log(formatQualityReport(report));
+      }
+    } finally {
+      closeDatabase();
+    }
+  });
+
+// === quality:score (Pro) — score a single insight ===
+program
+  .command('quality:score <id>')
+  .description('[Pro] Get detailed quality score for a specific insight')
+  .option('--json', 'Output as JSON')
+  .action((id, opts) => {
+    const dbPath = program.opts().db;
+    const { repo } = getDb(dbPath);
+    
+    try {
+      const insight = repo.get(id);
+      if (!insight) {
+        // Try prefix match
+        const all = repo.list();
+        const matches = all.filter(i => i.id.startsWith(id));
+        if (matches.length === 1) {
+          const score = scoreInsight(matches[0]);
+          if (opts.json) {
+            console.log(JSON.stringify(score, null, 2));
+          } else {
+            console.log(`Quality: ${(score.quality * 100).toFixed(1)}% — ${score.status.toUpperCase()}`);
+            console.log(`Claim: ${score.claim}`);
+            console.log(`Type: ${score.type} | Age: ${score.ageInDays}d`);
+            console.log(`Engagement: ${(score.components.engagement * 100).toFixed(0)}% | Freshness: ${(score.components.freshness * 100).toFixed(0)}% | Maturity: ${(score.components.maturity * 100).toFixed(0)}% | Confidence: ${(score.components.confidence * 100).toFixed(0)}%`);
+            if (score.recommendation) console.log(`→ ${score.recommendation}`);
+          }
+        } else if (matches.length > 1) {
+          console.error(`Ambiguous ID prefix: ${id} matches ${matches.length} insights`);
+          process.exit(1);
+        } else {
+          console.error(`Insight not found: ${id}`);
+          process.exit(1);
+        }
+        return;
+      }
+      
+      const score = scoreInsight(insight);
+      if (opts.json) {
+        console.log(JSON.stringify(score, null, 2));
+      } else {
+        console.log(`Quality: ${(score.quality * 100).toFixed(1)}% — ${score.status.toUpperCase()}`);
+        console.log(`Claim: ${score.claim}`);
+        console.log(`Type: ${score.type} | Age: ${score.ageInDays}d`);
+        console.log(`Engagement: ${(score.components.engagement * 100).toFixed(0)}% | Freshness: ${(score.components.freshness * 100).toFixed(0)}% | Maturity: ${(score.components.maturity * 100).toFixed(0)}% | Confidence: ${(score.components.confidence * 100).toFixed(0)}%`);
+        if (score.recommendation) console.log(`→ ${score.recommendation}`);
+      }
+    } finally {
+      closeDatabase();
+    }
   });
 
 program.parse();
