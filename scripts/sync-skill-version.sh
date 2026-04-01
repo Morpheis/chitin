@@ -14,8 +14,12 @@ if [ ! -f "$SKILL_FILE" ]; then
   exit 1
 fi
 
-# Replace the version line in YAML frontmatter
-sed -i '' "s/^version: .*/version: $PKG_VERSION/" "$SKILL_FILE"
+# Replace the version line in YAML frontmatter (portable: works on macOS and Linux)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  sed -i '' "s/^version: .*/version: $PKG_VERSION/" "$SKILL_FILE"
+else
+  sed -i "s/^version: .*/version: $PKG_VERSION/" "$SKILL_FILE"
+fi
 
 # Stage the change so npm's version commit includes it
 git add "$SKILL_FILE"
